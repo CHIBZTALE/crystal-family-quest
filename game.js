@@ -11,7 +11,7 @@ var store = {
   d: null,
   defaults: function () {
     return { bank: 0, stars: {}, upg: { dad: 0, mom: 0, son: 0, dau: 0 }, owned: [], equip: { pet: '', aura: '', trail: '' }, daily: { last: '', streak: 0 }, sound: true,
-      voice: true, pvi: 0, acct: { email: '' }, village: { b: {}, last: 0, stash: 0 }, top: 0, quests: { day: '', items: [] }, ach: {}, stats: { levels: 0, combos: 0, unity: 0, crystals: 0, speedy: 0, spins: 0, perfect: 0 }, codex: [], spin: '' };
+      voice: true, notif: true, asked: false, pvi: 0, acct: { email: '' }, village: { b: {}, last: 0, stash: 0 }, top: 0, quests: { day: '', items: [] }, ach: {}, stats: { levels: 0, combos: 0, unity: 0, crystals: 0, speedy: 0, spins: 0, perfect: 0 }, codex: [], spin: '' };
   },
   load: function () {
     var base = this.defaults(), raw = {};
@@ -27,6 +27,8 @@ var store = {
     if (raw.sound === false) d.sound = false;
     if (raw.voice === false) d.voice = false;
     if (typeof raw.pvi === 'number') d.pvi = raw.pvi;
+    if (raw.notif === false) d.notif = false;
+    if (raw.asked === true) d.asked = true;
     if (raw.acct && typeof raw.acct.email === 'string') d.acct.email = raw.acct.email;
     if (raw.village && raw.village.b) d.village = { b: raw.village.b, last: raw.village.last || 0, stash: raw.village.stash || 0 };
     if (typeof raw.top === 'number') d.top = raw.top;
@@ -430,6 +432,15 @@ var Sfx = {
   }
 };
 
+
+/* ================= safe scene change (never hangs) ================= */
+function fadeGo(sc, key, data, col, dur) {
+  var done = false, c = col == null ? 0 : col, d = dur || 250;
+  var go = function () { if (done) return; done = true; try { sc.scene.start(key, data); } catch (e) {} };
+  try { sc.cameras.main.fadeOut(d, c, c, c); sc.cameras.main.once('camerafadeoutcomplete', go); } catch (e) {}
+  setTimeout(go, d + 500);
+}
+
 /* ================= ui helpers ================= */
 function roundRect(scene, x, y, w, h, r, fill, alpha, stroke, sw) {
   var g = scene.add.graphics();
@@ -512,6 +523,7 @@ var Boot = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Boot() { Phaser.Scene.call(this, 'Boot'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this, keys = Object.keys(URLS), left = keys.length, finished = false;
     txt(this, W / 2, H / 2 - 30, 'Loading the garden...', 34, CREAM);
     this.add.rectangle(W / 2, H / 2 + 24, 420, 18, 0x244a35).setOrigin(0.5);
@@ -543,6 +555,7 @@ var Title = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Title() { Phaser.Scene.call(this, 'Title'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this, go = false, i;
     var bgi = this.add.image(W / 2, H / 2, 'title').setDisplaySize(W, H).setDepth(0);
     bgi.setScale(bgi.scaleX * 1.12, bgi.scaleY * 1.12);
@@ -583,8 +596,7 @@ var Title = new Phaser.Class({
       if (go) return; go = true;
       Sfx.init(); Sfx.key(); autoFull();
       Voice.speak('dad', 'Welcome, family! Let us go on an adventure!');
-      self.cameras.main.fadeOut(350, 0, 0, 0);
-      self.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+      fadeGo(self, 'Hub', undefined, 0, 350);
     };
     this.input.on('pointerdown', start);
     this.input.keyboard.on('keydown', start);
@@ -598,13 +610,14 @@ var Hub = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Hub() { Phaser.Scene.call(this, 'Hub'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.pop = [];
     softBg(this, 0.5);
     this.bank = bankBar(this);
     ensureQuests();
-    var logo = this.add.image(W / 2, 128, 'logo').setScale(0.52);
-    this.tweens.add({ targets: logo, scale: 0.545, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    var logo = this.add.image(W / 2, 128, 'logo').setScale(0.385);
+    this.tweens.add({ targets: logo, scale: 0.4, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     var nl = nextLevel();
     txt(this, W / 2, 262, 'Stars ' + totalStars() + '     Best level ' + Math.max(1, store.d.top) + '     Codex ' + store.d.codex.length + '/' + CODEX.length, 22, '#bfe6cf');
 
@@ -636,13 +649,20 @@ var Hub = new Phaser.Class({
     var tg = function (x, label, cb) {
       var b = button(self, x, 638, 190, 48, label(), function () { cb(); b.setLabel(label()); }, { fill: 0x1a3a2a, size: 20 }); return b;
     };
-    tg(W / 2 - 215, function () { return Sfx.on ? 'Sound on' : 'Sound off'; }, function () { Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); });
-    tg(W / 2, function () { return store.d.voice ? 'Voices on' : 'Voices off'; }, function () {
+    tg(W / 2 - 322, function () { return Sfx.on ? 'Sound on' : 'Sound off'; }, function () { Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); });
+    tg(W / 2 - 107, function () { return store.d.voice ? 'Voices on' : 'Voices off'; }, function () {
       Sfx.init(); store.d.voice = !store.d.voice; store.save();
       if (store.d.voice) { Voice.speak('mom', 'Hello family! Can you hear me?'); if (!Voice.available()) toast(self, 'This device has no speech voice, so you will hear chirps instead.', 3000, 900); } else Voice.stop();
     });
-    tg(W / 2 + 215, function () { return isFull() ? 'Exit full screen' : 'Full screen'; }, function () { toggleFull(); });
+    tg(W / 2 + 107, function () { return store.d.notif ? 'Alerts on' : 'Alerts off'; }, function () {
+      store.d.notif = !store.d.notif; store.save();
+      if (store.d.notif) { Notif.ask(); Notif.schedule(); toast(self, 'Reminders on: daily gift, full village and more.', 2400, 900); } else Notif.off();
+    });
+    tg(W / 2 + 322, function () { return isFull() ? 'Exit full screen' : 'Full screen'; }, function () { toggleFull(); });
     txt(this, W / 2, 696, 'A GAME BY CJ\'S FAMILY', 16, '#ffe9a0', { stroke: '#2a1808', strokeThickness: 4, fontStyle: '700' }).setDepth(70);
+    button(this, 96, 44, 140, 50, 'Exit', function () { askExit(); }, { fill: 0x6a2a2a, size: 24 });
+    if (!store.d.asked) { store.d.asked = true; store.save(); this.time.delayedCall(1800, function () { Notif.ask(); }); }
+    else Notif.schedule();
 
     this.cameras.main.fadeIn(350);
     if (dailyStatus().can && !hubDailyShown) {
@@ -653,8 +673,7 @@ var Hub = new Phaser.Class({
   go: function (key, data) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start(key, data); });
+    fadeGo(this, key, data);
   },
   closePop: function () {
     this.pop.forEach(function (o) { if (o && o.destroy) o.destroy(); });
@@ -710,6 +729,7 @@ var Levels = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Levels() { Phaser.Scene.call(this, 'Levels'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.objs = [];
     softBg(this, 0.55);
@@ -756,14 +776,12 @@ var Levels = new Phaser.Class({
   start: function (n) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Level', { n: n }); });
+    fadeGo(this, 'Level', { n: n });
   },
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -773,6 +791,7 @@ var Quests = new Phaser.Class({
   initialize: function Quests() { Phaser.Scene.call(this, 'Quests'); },
   init: function (data) { this.tab = (data && data.tab) || 'quests'; },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.objs = [];
     softBg(this, 0.6);
@@ -824,8 +843,7 @@ var Quests = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -834,6 +852,7 @@ var Codex = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Codex() { Phaser.Scene.call(this, 'Codex'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.page = 0; this.objs = [];
     softBg(this, 0.62);
@@ -865,8 +884,7 @@ var Codex = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -876,6 +894,7 @@ var Spin = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Spin() { Phaser.Scene.call(this, 'Spin'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this, cols = [0xff8fc0, 0x6fd6ff, 0xffd36f, 0xc59bff, 0x59d98e, 0xffb347, 0xff6b6b, 0x8fe8ff];
     softBg(this, 0.6);
     this.bank = bankBar(this);
@@ -919,8 +938,7 @@ var Spin = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -945,6 +963,7 @@ var Village = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Village() { Phaser.Scene.call(this, 'Village'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.objs = [];
     softBg(this, 0.55);
@@ -997,8 +1016,7 @@ var Village = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -1035,6 +1053,7 @@ var About = new Phaser.Class({
   initialize: function About() { Phaser.Scene.call(this, 'About'); },
   init: function (data) { this.tab = (data && data.tab) || 'about'; },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.objs = [];
     softBg(this, 0.62);
@@ -1065,8 +1084,7 @@ var About = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -1143,6 +1161,7 @@ var Account = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Account() { Phaser.Scene.call(this, 'Account'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.objs = [];
     softBg(this, 0.62);
@@ -1193,8 +1212,7 @@ var Account = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true; this.gone = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -1203,6 +1221,7 @@ var Shop = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Shop() { Phaser.Scene.call(this, 'Shop'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.tabObjs = []; this.tab = 'pets';
     softBg(this, 0.58);
@@ -1287,8 +1306,7 @@ var Shop = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -1297,6 +1315,7 @@ var Upgrades = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Upgrades() { Phaser.Scene.call(this, 'Upgrades'); },
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this;
     this.cardObjs = [];
     softBg(this, 0.58);
@@ -1341,8 +1360,7 @@ var Upgrades = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+    fadeGo(this, 'Hub');
   }
 });
 
@@ -1358,8 +1376,9 @@ var Level = new Phaser.Class({
   },
 
   create: function () {
+    this.leaving = false; this.gone = false; this._doorStarted = false;
     var self = this, d = store.d;
-    this.alive = true; this.busy = false; this.pushing = false; this.power = 0;
+    this.alive = true; this.busy = false; this.pushing = false; this.power = 0; this.puzzleOpen = false; this.enterBusy = false; this.busyAcc = 0; this.pushResolve = null; this.pushBase = null; this.lucky = null; this.fxList = [];
     this.hearts = 3; this.crystals = 0; this.over = false;
     this.active = 'dad'; this.lastProgress = this.time.now; this.hinted = false;
     this.chain = 0; this.chainAt = -1e9; this.lastWho = ''; this.trailT = 0;
@@ -1380,8 +1399,8 @@ var Level = new Phaser.Class({
     if (this.enter) this.emerge(); else this.time.delayedCall(800, function () { self.intro(); });
   },
 
-  wait: function (ms) { var s = this; return new Promise(function (r) { s.time.delayedCall(ms, r); }); },
-  tw: function (cfg) { var s = this; return new Promise(function (r) { cfg.onComplete = r; s.tweens.add(cfg); }); },
+  wait: function (ms) { var s = this; return new Promise(function (r) { s.time.delayedCall(ms, r); setTimeout(r, ms + 1200); }); },
+  tw: function (cfg) { var s = this; return new Promise(function (r) { cfg.onComplete = r; try { s.tweens.add(cfg); } catch (e) { r(); } setTimeout(r, (cfg.duration || 0) + (cfg.delay || 0) + 1200); }); },
 
   buildFx: function (kind) {
     var self = this, i, n = 18, spec = {
@@ -1436,7 +1455,7 @@ var Level = new Phaser.Class({
 
   emerge: function () {
     var self = this, d = this.door;
-    this.busy = true;
+    this.busy = true; this.enterBusy = true;
     var th = this.lv.theme;
     ORDER.forEach(function (id, i) {
       var c = self.ch[id]; c.lock = true; c.sprite.setAlpha(0); c.x = 62; c.sprite.x = 62; c.sprite.setTexture(c.def.walk);
@@ -1444,11 +1463,25 @@ var Level = new Phaser.Class({
         if (!self.alive) return;
         Sfx.blip();
         c.sprite.setAlpha(1);
-        self.tweens.add({ targets: c, x: CH[id].x + 60, duration: 600, ease: 'Sine.easeOut', onComplete: function () { c.lock = false; c.targetX = c.x; if (id === 'son') { self.busy = false; self.intro(); } } });
+        self.tweens.add({ targets: c, x: CH[id].x + 60, duration: 600, ease: 'Sine.easeOut', onComplete: function () { c.lock = false; c.targetX = c.x; if (id === 'son') { self.enterBusy = false; self.busy = false; self.intro(); } } });
       });
     });
     this.tweens.add({ targets: this.doorGlow, alpha: 0, scale: 0.3, duration: 2600, delay: 400 });
     this.burst(70, GY - 120, [th.door, 0xffffff], 24);
+    // safety: whatever happens, the family is free to move after 4.5 seconds
+    setTimeout(function () {
+      if (!self.alive || !self.ch) return;
+      ORDER.forEach(function (id) { var c = self.ch[id]; if (c.lock && !self.over) { c.lock = false; c.sprite.setAlpha(1); c.x = Math.max(c.x, 120); c.targetX = c.x; } });
+      if (self.busy && !self.over && !self.pushing && !self.puzzleOpen && self.enterBusy) { self.enterBusy = false; self.busy = false; self.intro(); }
+    }, 4500);
+  },
+
+  unstick: function () {
+    var self = this;
+    this.busy = false; this.pushing = false;
+    ORDER.forEach(function (id) { var c = self.ch[id]; c.lock = false; c.sprite.setAlpha(1); c.sprite.setTexture(c.def.idle); c.targetX = c.x; });
+    this.toast('Back to normal. Keep going!', 1600);
+    this.checkDone();
   },
 
   /* ----- world ----- */
@@ -1553,7 +1586,8 @@ var Level = new Phaser.Class({
     c.targetX = Phaser.Math.Clamp(x, 60, this.xMax());
     c.following = false;
     if (Math.abs(c.x - c.targetX) < 2) return Promise.resolve();
-    return new Promise(function (r) { c.waiters.push(r); });
+    var ms = Math.abs(c.x - c.targetX) / (c.def.speed * this.speedMul) * 1000 + 2500;
+    return new Promise(function (r) { c.waiters.push(r); setTimeout(function () { if (c.waiters.indexOf(r) >= 0) { c.waiters.splice(c.waiters.indexOf(r), 1); c.x = c.targetX; } r(); }, ms); });
   },
 
   stepChar: function (id, s, t) {
@@ -1634,8 +1668,7 @@ var Level = new Phaser.Class({
   leave: function (key) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start(key); });
+    fadeGo(this, key);
   },
 
   refreshPorts: function () {
@@ -1735,7 +1768,7 @@ var Level = new Phaser.Class({
   loseHeart: function () {
     if (this.hearts <= 0 || this.over) return;
     if (this.shield) { this.shield = false; this.toast('Shell guard blocked the hit.', 2000); Sfx.thud(); this.cameras.main.shake(120, 0.003); return; }
-    this.hearts--;
+    this.hearts--; Haptic.pulse('bad');
     this.say(this.active, 'hurt', true);
     var im = this.heartImgs[this.hearts];
     im.setTexture('heart_empty');
@@ -1778,7 +1811,7 @@ var Level = new Phaser.Class({
 
   comboFire: function () {
     var c = this.chain, bonus = Math.min(c, 4);
-    Sfx.combo(); bump('combos'); this.say(this.lastWho, 'combo', true);
+    Sfx.combo(); Haptic.pulse('tap'); bump('combos'); this.say(this.lastWho, 'combo', true);
     if (c >= 4) {
       bump('unity');
       this.banner('UNITY MOVE!', '#8fe8ff');
@@ -1797,7 +1830,7 @@ var Level = new Phaser.Class({
     k.clearTint(); k.setAlpha(1);
     this.tweens.add({ targets: k, scale: 0.46, duration: 220, yoyo: true, ease: 'Back.easeOut' });
     this.burst(k.x, k.y, [0xffd36f, 0xfff2b8], 18);
-    Sfx.key();
+    Sfx.key(); Haptic.pulse('win');
     this.progress();
     this.registerAction(o.who);
     this.say(o.who, 'win', true);
@@ -1814,11 +1847,18 @@ var Level = new Phaser.Class({
       this.toast('A big rock blocks the way. Move it first.', 2600); this.pulsePortrait('dad'); Sfx.blip(); return;
     }
     this.busy = true;
-    this.say(o.who, 'start', true);
-    await this.walkTo(o.who, o.stand);
-    if (!this.alive) return;
-    this.ch[o.who].dir = 1;
-    await this['do_' + o.type](o);
+    try {
+      this.say(o.who, 'start', true);
+      await this.walkTo(o.who, o.stand);
+      if (!this.alive) return;
+      this.ch[o.who].dir = 1;
+      await this['do_' + o.type](o);
+    } catch (e) {
+      if (!this.alive) return;
+      this.puzzleOpen = false; this.pushing = false;
+      ORDER.forEach(function (id) { var c = this.ch[id]; c.lock = false; c.sprite.setAlpha(1); c.sprite.setTexture(c.def.idle); c.targetX = c.x; }, this);
+      this.toast('Oops, let us try that again.', 1800);
+    }
     if (!this.alive) return;
     this.busy = false;
     this.checkDone();
@@ -1939,7 +1979,9 @@ var Level = new Phaser.Class({
 
   runePuzzle: function () {
     var self = this;
-    return new Promise(function (resolve) {
+    self.puzzleOpen = true;
+    return new Promise(function (resolve0) {
+      var resolve = function () { self.puzzleOpen = false; resolve0(); };
       var D = 1300;
       var cont = [];
       var add = function (o) { cont.push(o); return o; };
@@ -2120,27 +2162,29 @@ var Level = new Phaser.Class({
     this.gateGlow.setAlpha(1).setScale(2.2);
     this.marker.setVisible(false);
     var gx = this.gate.x;
+    setTimeout(function () { if (self.alive && !self._doorStarted) { self._doorStarted = true; fadeGo(self, 'Level', { n: n + 1, enter: true }, 255, 200); } }, 7500);
     var walkers = ORDER.map(function (id, i) {
       var c = self.ch[id]; c.lock = true; c.dir = 1; c.sprite.setTexture(c.def.walk); c.sprite.setFlipX(false);
       return self.wait(i * 380).then(function () {
         return self.tw({ targets: c, x: gx - 12, duration: 1500 + (3 - i) * 100, ease: 'Sine.easeInOut', onUpdate: function () { c.sprite.x = c.x; } });
       }).then(function () { return self.tw({ targets: c.sprite, alpha: 0, scale: c.scale * 0.8, duration: 260 }); }).then(function () { Sfx.blip(); self.burst(gx, GY - 100, [0xfff2b8, 0xffffff], 10); });
     });
-    await Promise.all(walkers);
-    if (!this.alive) return;
-    this.tweens.add({ targets: this.gateGlow, scale: 9, duration: 700, ease: 'Quad.easeIn' });
-    Sfx.win();
-    this.cameras.main.flash(600, 255, 255, 255);
-    await this.wait(650);
-    this.cameras.main.fadeOut(300, 255, 255, 255);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Level', { n: n + 1, enter: true }); });
+    try {
+      await Promise.all(walkers);
+      if (!this.alive) return;
+      this.tweens.add({ targets: this.gateGlow, scale: 9, duration: 700, ease: 'Quad.easeIn' });
+      Sfx.win(); Haptic.pulse('win');
+      this.cameras.main.flash(600, 255, 255, 255);
+      await this.wait(650);
+    } catch (e) {}
+    if (this._doorStarted) return; this._doorStarted = true;
+    fadeGo(this, 'Level', { n: n + 1, enter: true }, 255, 300);
   },
 
   leave2: function (key, data) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start(key, data); });
+    fadeGo(this, key, data);
   },
 
   gameOver: function () {
@@ -2185,6 +2229,10 @@ var Level = new Phaser.Class({
 
     var tnow = this.time.now;
     this.fxStep(s, time);
+    if (this.busy && !this.over && !this.pushing && !this.puzzleOpen && !this.enterBusy) {
+      this.busyAcc = (this.busyAcc || 0) + s;
+      if (this.busyAcc > 40) { this.busyAcc = 0; this.unstick(); }
+    } else this.busyAcc = 0;
     if (!this.busy && !this.over && tnow - this.lastIdle > 11000) { this.lastIdle = tnow; this.say(ORDER[Math.floor(Math.random() * 4)], 'idle', true); }
     if (this.chain > 0) {
       var left = COMBO_MS - (tnow - this.chainAt);
@@ -2229,6 +2277,88 @@ var Level = new Phaser.Class({
   }
 });
 
+/* ================= phone features: vibration, notifications, back button ================= */
+function nativePlugin(name) {
+  try { var C = window.Capacitor; if (C && C.isNativePlatform && C.isNativePlatform() && C.registerPlugin) return C.registerPlugin(name); } catch (e) {}
+  return null;
+}
+var Haptic = {
+  pulse: function (kind) {
+    try {
+      var h = nativePlugin('Haptics');
+      if (h) {
+        if (kind === 'win') h.notification({ type: 'SUCCESS' }).catch(function () {});
+        else if (kind === 'bad') h.notification({ type: 'ERROR' }).catch(function () {});
+        else h.impact({ style: kind === 'tap' ? 'LIGHT' : 'MEDIUM' }).catch(function () {});
+      } else if (navigator.vibrate) navigator.vibrate(kind === 'win' ? [30, 40, 60] : (kind === 'bad' ? 120 : 15));
+    } catch (e) {}
+  }
+};
+var NOTE_LINES = [
+  ['Dad says: Yam time!', 'Your daily gift is waiting. Come and claim it before it gets cold.'],
+  ['Mom says: Come home!', 'The family has a new gift for you. Claim it and keep your streak.'],
+  ['Son says: Play with me!', 'There are lucky gems hiding in the next level. Hurry!'],
+  ['Daughter says: Birdie misses you', 'A new proverb is waiting. Come and listen.']
+];
+var Notif = {
+  ask: function () {
+    var p = nativePlugin('LocalNotifications');
+    if (p) { try { return p.requestPermissions().then(function () { Notif.schedule(); }).catch(function () {}); } catch (e) {} }
+    else if (typeof Notification !== 'undefined' && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e2) {} }
+    return Promise.resolve();
+  },
+  schedule: function () {
+    var p = nativePlugin('LocalNotifications');
+    if (!p) return;
+    try {
+      var cancel = p.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+      var go = function () {
+        if (!store.d.notif) return;
+        var day = NOTE_LINES[Math.floor(Date.now() / 86400000) % NOTE_LINES.length], list = [
+          { id: 1, title: day[0], body: day[1], schedule: { on: { hour: 18, minute: 0 }, allowWhileIdle: true } },
+          { id: 3, title: 'The family misses you!', body: 'Come back for your daily gift and a lucky spin.', schedule: { at: new Date(Date.now() + 2 * 86400000), allowWhileIdle: true } }
+        ];
+        if (villageRate() > 0) list.push({ id: 2, title: 'Your village is full!', body: 'The crystals are ready to collect.', schedule: { at: new Date(Date.now() + 8 * 3600000), allowWhileIdle: true } });
+        p.schedule({ notifications: list }).catch(function () {});
+      };
+      if (cancel && cancel.then) cancel.then(go, go); else go();
+    } catch (e) {}
+  },
+  off: function () { var p = nativePlugin('LocalNotifications'); if (p) { try { p.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }] }).catch(function () {}); } catch (e) {} } }
+};
+
+function activeScene() { try { return window.__cfq && window.__cfq.scene.getScenes(true)[0]; } catch (e) { return null; } }
+function closeExit(sc) {
+  if (sc && sc.__exitUI) { sc.__exitUI.forEach(function (o) { if (o && o.destroy) o.destroy(); }); sc.__exitUI = null; }
+}
+function doExit() {
+  Voice.stop(); store.save();
+  try { var a = nativePlugin('App'); if (a && a.exitApp) { a.exitApp(); return; } } catch (e) {}
+  try { window.close(); } catch (e2) {}
+  var sc = activeScene();
+  if (sc) toast(sc, 'Thanks for playing! You can close this tab now.', 4000, 6100);
+}
+function askExit() {
+  var sc = activeScene(); if (!sc) { doExit(); return; }
+  if (sc.__exitUI) { closeExit(sc); return; }
+  var D = 6000, o = [];
+  o.push(sc.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.72).setDepth(D).setInteractive());
+  o.push(roundRect(sc, W / 2 - 330, 200, 660, 300, 36, DARKG, 0.98, GOLD, 5).setDepth(D + 1));
+  o.push(txt(sc, W / 2, 262, 'Close the game?', 46, CREAM, { stroke: '#2a1808', strokeThickness: 6 }).setDepth(D + 2));
+  o.push(txt(sc, W / 2, 335, 'Are you sure you want to close the game?', 27, '#ffffff', { wordWrap: { width: 560 } }).setDepth(D + 2));
+  var yes = button(sc, W / 2 - 140, 424, 230, 66, 'Yes, close', function () { doExit(); }, { depth: D + 5, fill: 0xa8403a, size: 27 });
+  var no = button(sc, W / 2 + 140, 424, 230, 66, 'No, keep playing', function () { closeExit(sc); }, { depth: D + 5, size: 24 });
+  o.push(yes, no);
+  sc.__exitUI = o;
+}
+function onBack() {
+  var sc = activeScene(); if (!sc) return;
+  if (sc.__exitUI) { closeExit(sc); return; }
+  var key = sc.scene && sc.scene.key;
+  if (key === 'Hub' || key === 'Title' || key === 'Level' || key === 'Boot') askExit();
+  else fadeGo(sc, 'Hub');
+}
+
 /* ================= fullscreen ================= */
 function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
 function toggleFull() {
@@ -2250,8 +2380,18 @@ function start() {
     scene: [Boot, Title, Hub, Levels, Quests, Codex, Spin, Village, About, Account, Shop, Upgrades, Level]
   });
 }
+function hookPhone() {
+  try {
+    var app = nativePlugin('App');
+    if (app) {
+      app.addListener('backButton', function () { onBack(); });
+      app.addListener('appStateChange', function (st) { if (!st.isActive) Notif.schedule(); });
+    }
+  } catch (e) {}
+  try { window.addEventListener('keydown', function (e) { if (e.key === 'Escape') onBack(); }); } catch (e2) {}
+}
 var started = false;
-function go() { if (started) return; started = true; start(); }
+function go() { if (started) return; started = true; start(); hookPhone(); }
 try {
   if (document.fonts && document.fonts.load) {
     Promise.all([document.fonts.load('600 30px Fredoka'), document.fonts.load('600 30px "Trebuchet MS"')]).then(go, go);

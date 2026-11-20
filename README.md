@@ -53,3 +53,11 @@ Sign-in saves progress to the player's own Google Drive app-data folder (hidden,
 5. Copy the client ID and paste it into `GOOGLE_CLIENT_ID` near the top of the "Account" section in `game.js`.
 
 Google sign-in works on a normal web page. Inside the Android app Google may block the pop-up, so the **backup code** (Save progress > Copy my code) is the reliable way to move progress between phones.
+
+
+## Version 2.2
+
+- Hang fixes: every screen change now has a safety timer, so a fade that never reports back can no longer freeze the game. Puzzles, pushes and the door walk-through also recover on their own if anything goes wrong.
+- Closing the game: the phone's back button (and the Esc key, and the new Exit button on the home screen) asks "Are you sure you want to close the game?" Yes closes, No keeps playing.
+- Permissions and reminders (Android): notifications (daily gift at 6 pm, village full after 8 hours, "the family misses you" after 2 days) and vibration. The game asks for notification permission once. Alerts can be turned off on the home screen.
+- New logo and app icon from the supplied artwork (`assets/logo.png`, `resources/icon*.png`).
