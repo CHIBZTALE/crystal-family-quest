@@ -21,7 +21,7 @@ jobs:
           java-version: 17
 
       - name: Install packages
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build the web game
         run: node build-web.js
