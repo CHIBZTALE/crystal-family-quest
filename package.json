@@ -1,0 +1,15 @@
+{
+  "name": "crystal-family-quest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crystal Family Quest, a family adventure game",
+  "scripts": {
+    "build:web": "node build-web.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "phaser": "3.80.1"
+  }
+}
