@@ -6,15 +6,12 @@ PHASER = 'https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js'
 FONTS = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap'
 NOTE = 'Tap the path to walk. Tap an object to use a power. Tap a portrait to switch family members.'
 
-CSS = """:root { --bg: #0e2217; --ink: #f3e6c4; --muted: #9fb8a8; --gold: #ffd36f; color-scheme: dark; }
-html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: Fredoka, "Trebuchet MS", sans-serif;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 8px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-#game { width: min(100%, calc((100dvh - 72px) * 1.7778)); aspect-ratio: 16 / 9; max-width: 100%; background: #10241a; border-radius: 10px; overflow: hidden; }
+CSS = """:root { --bg: #0b1a12; --ink: #f3e6c4; --gold: #ffd36f; color-scheme: dark; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); overscroll-behavior: none; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+body { font-family: Fredoka, "Trebuchet MS", sans-serif; color: var(--ink); }
+#game { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: var(--bg); }
 #game canvas { display: block; }
-#note, #rotate { margin: 0; font-size: 14px; color: var(--muted); text-align: center; max-width: 60ch; }
-#rotate { display: none; color: var(--gold); font-size: 15px; }
+#rotate { display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 5; margin: 0; padding: 10px 16px; text-align: center; font-size: 15px; color: #10281c; background: var(--gold); pointer-events: none; }
 @media (orientation: portrait) { #rotate { display: block; } }
 """
 
@@ -35,14 +32,13 @@ body = """<title>Crystal Family Quest</title>
 <style>
 %s</style>
 <div id="game"></div>
-<p id="rotate">Turn your phone sideways for a bigger game.</p>
-<p id="note">%s</p>
+<p id="rotate">Turn your phone sideways for the full game.</p>
 <script src="%s"></script>
 <script>window.ASSET_URLS = %s;</script>
 <script>
 %s
 </script>
-""" % (FONTS, CSS, NOTE, PHASER, json.dumps(urls), game_js)
+""" % (FONTS, CSS, PHASER, json.dumps(urls), game_js)
 os.makedirs(os.path.join(HERE, 'dist'), exist_ok=True)
 with open(os.path.join(HERE, 'dist', 'crystal-family-quest.html'), 'w', encoding='utf-8') as f:
     f.write(body)
@@ -63,14 +59,13 @@ dev = """<!doctype html>
 </head>
 <body>
 <div id="game"></div>
-<p id="rotate">Turn your phone sideways for a bigger game.</p>
-<p id="note">%s</p>
+<p id="rotate">Turn your phone sideways for the full game.</p>
 <script src="%s"></script>
 <script src="assets.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
-""" % (FONTS, CSS, NOTE, PHASER)
+""" % (FONTS, CSS, PHASER)
 with open(os.path.join(HERE, 'index.html'), 'w', encoding='utf-8') as f:
     f.write(dev)
 

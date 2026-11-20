@@ -1,6 +1,6 @@
 {
   "name": "crystal-family-quest",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Crystal Family Quest, a family adventure game",
   "scripts": {
@@ -11,5 +11,8 @@
     "@capacitor/cli": "^6.1.2",
     "@capacitor/core": "^6.1.2",
     "phaser": "3.80.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
   }
 }

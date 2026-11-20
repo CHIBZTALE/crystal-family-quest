@@ -10,7 +10,8 @@ var COMBO_MS = 25000;
 var store = {
   d: null,
   defaults: function () {
-    return { bank: 0, stars: {}, upg: { dad: 0, mom: 0, son: 0, dau: 0 }, owned: [], equip: { pet: '', aura: '', trail: '' }, daily: { last: '', streak: 0 }, sound: true };
+    return { bank: 0, stars: {}, upg: { dad: 0, mom: 0, son: 0, dau: 0 }, owned: [], equip: { pet: '', aura: '', trail: '' }, daily: { last: '', streak: 0 }, sound: true,
+      voice: true, top: 0, quests: { day: '', items: [] }, ach: {}, stats: { levels: 0, combos: 0, unity: 0, crystals: 0, speedy: 0, spins: 0, perfect: 0 }, codex: [], spin: '' };
   },
   load: function () {
     var base = this.defaults(), raw = {};
@@ -24,6 +25,13 @@ var store = {
     if (raw.equip) Object.keys(d.equip).forEach(function (k) { if (typeof raw.equip[k] === 'string') d.equip[k] = raw.equip[k]; });
     if (raw.daily) { d.daily.last = raw.daily.last || ''; d.daily.streak = raw.daily.streak || 0; }
     if (raw.sound === false) d.sound = false;
+    if (raw.voice === false) d.voice = false;
+    if (typeof raw.top === 'number') d.top = raw.top;
+    if (raw.quests && Array.isArray(raw.quests.items)) d.quests = raw.quests;
+    if (raw.ach && typeof raw.ach === 'object') d.ach = raw.ach;
+    if (raw.stats) Object.keys(d.stats).forEach(function (k) { if (typeof raw.stats[k] === 'number') d.stats[k] = raw.stats[k]; });
+    if (Array.isArray(raw.codex)) d.codex = raw.codex;
+    if (typeof raw.spin === 'string') d.spin = raw.spin;
     this.d = d;
     return d;
   },
@@ -93,18 +101,64 @@ var TYPES = {
   bush: { key: 'bush', who: 'dau', sc: 0.8, stand: -130, reward: 2 },
   boulder: { key: 'boulder', who: 'dad', sc: 0.72, stand: -135, reward: 2 }
 };
-var LEVELS = [
+var BASE = [
   { name: 'Garden Gate', rune: 3, gain: 0.17, sc: 1, hint: 22000, tint: null,
     objs: [['tablet', 440], ['bridge', 690], ['bush', 895], ['boulder', 1060]] },
-  { name: 'Golden Hour', rune: 4, gain: 0.15, sc: 0.95, hint: 20000, tint: { c: 0xffa84a, a: 0.18 },
+  { name: 'Crystal Cave', rune: 4, gain: 0.15, sc: 0.95, hint: 20000, tint: { c: 0xffa84a, a: 0.18 },
     objs: [['bridge', 380], ['boulder', 620], ['tablet', 820], ['bush', 990]] },
-  { name: 'Twin Rocks', rune: 4, gain: 0.14, sc: 0.85, hint: 20000, tint: { c: 0xff8a5c, a: 0.12 },
+  { name: 'Cloud Hop', rune: 4, gain: 0.14, sc: 0.85, hint: 20000, tint: { c: 0xff8a5c, a: 0.12 },
     objs: [['bush', 300], ['boulder', 480], ['tablet', 660], ['bridge', 840], ['boulder', 1020]] },
-  { name: 'Moonlit Path', rune: 5, gain: 0.13, sc: 0.85, hint: 18000, tint: { c: 0x1a2a6a, a: 0.42 }, fireflies: true,
+  { name: 'Whisper Woods', rune: 5, gain: 0.13, sc: 0.85, hint: 18000, tint: { c: 0x1a2a6a, a: 0.42 }, fireflies: true,
     objs: [['tablet', 300], ['boulder', 470], ['bush', 650], ['bridge', 830], ['tablet', 1010]] },
-  { name: 'Family Festival', rune: 5, gain: 0.12, sc: 0.78, hint: 18000, tint: { c: 0xff5fa8, a: 0.1 }, fireflies: true,
+  { name: 'Festival Night', rune: 5, gain: 0.12, sc: 0.78, hint: 18000, tint: { c: 0xff5fa8, a: 0.1 }, fireflies: true,
     objs: [['tablet', 240], ['bridge', 390], ['boulder', 560], ['bush', 720], ['tablet', 870], ['boulder', 1020]] }
 ];
+
+/* ---- worlds (each level gets its own place) ---- */
+var THEMES = [
+  { key: 'garden', bg: 'bg', realm: 'Garden Realm', tint: null, fx: 'petals', door: 0xfff0b0 },
+  { key: 'caves', bg: 'env_caves', realm: 'Crystal Caves', tint: null, fx: 'sparks', door: 0xc59bff },
+  { key: 'sky', bg: 'env_sky', realm: 'Cloud Kingdom', tint: null, fx: 'clouds', door: 0xffffff },
+  { key: 'forest', bg: 'env_forest', realm: 'Whisper Forest', tint: null, fx: 'fireflies', door: 0xfff2a8 },
+  { key: 'festival', bg: 'env_festival', realm: 'Festival Night', tint: null, fx: 'confetti', door: 0xff8fc0 },
+  { key: 'savanna', bg: 'env_savanna', realm: 'Golden Savanna', tint: null, fx: 'dust', door: 0xffd36f },
+  { key: 'beach', bg: 'env_beach', realm: 'Sunny Shore', tint: null, fx: 'bubbles', door: 0x9fe8ff },
+  { key: 'snow', bg: 'env_snow', realm: 'Frost Peaks', tint: null, fx: 'snow', door: 0xd8f0ff },
+  { key: 'ember', bg: 'env_ember', realm: 'Ember Mountain', tint: null, fx: 'embers', door: 0xffa040 },
+  { key: 'sweet', bg: 'env_sweet', realm: 'Candy Land', tint: null, fx: 'confetti', door: 0xff9ad0 }
+];
+var ADJ = ['Sparkly', 'Giggling', 'Secret', 'Bouncy', 'Golden', 'Sleepy', 'Brave', 'Happy', 'Mighty', 'Dreamy', 'Cheeky', 'Shiny'];
+var NOUN = ['Trail', 'Crossing', 'Meadow', 'Bend', 'Hideout', 'Gateway', 'Hollow', 'Lookout', 'Path', 'Passage', 'Clearing', 'Valley'];
+var THEME_OF_BASE = [0, 1, 2, 3, 4];
+function themeOf(n) { return THEMES[(n - 1) % THEMES.length]; }
+function rng(seed) { var t = seed * 2654435761 % 4294967296; return function () { t = (t + 0x6D2B79F5) | 0; var r = Math.imul(t ^ (t >>> 15), 1 | t); r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r; return ((r ^ (r >>> 14)) >>> 0) / 4294967296; }; }
+var _lvCache = {};
+function getLevel(n) {
+  if (_lvCache[n]) return _lvCache[n];
+  var th = themeOf(n), lv;
+  if (n <= BASE.length) {
+    lv = Object.assign({}, BASE[n - 1]); lv.tint = null; lv.fireflies = false;
+    lv.name = th.realm.split(' ')[0] + ' ' + BASE[n - 1].name; lv.name = BASE[n - 1].name;
+  } else {
+    var r = rng(n * 97 + 13), boss = n % 10 === 0;
+    var cnt = Math.min(7, 4 + Math.floor((n - 6) / 8) + (boss ? 1 : 0));
+    var sc = { 4: 1, 5: 0.88, 6: 0.8, 7: 0.74 }[cnt];
+    var types = ['tablet', 'bridge', 'bush', 'boulder'], objs = [], x0 = 230, x1 = 1040, step = (x1 - x0) / (cnt - 1);
+    var bag = [];
+    for (var i = 0; i < cnt; i++) {
+      if (!bag.length) { bag = types.slice(); for (var k = bag.length - 1; k > 0; k--) { var j = Math.floor(r() * (k + 1)); var tmp = bag[k]; bag[k] = bag[j]; bag[j] = tmp; } }
+      objs.push([bag.pop(), Math.round(x0 + i * step + (r() - 0.5) * Math.min(24, step * 0.18))]);
+    }
+    lv = {
+      name: (boss ? 'Guardian ' : ADJ[Math.floor(r() * ADJ.length)] + ' ') + NOUN[Math.floor(r() * NOUN.length)],
+      rune: Math.min(7, 3 + Math.floor(n / 5)), gain: Math.max(0.085, 0.16 - n * 0.002), sc: sc,
+      hint: Math.max(14000, 20000 - n * 100), objs: objs, boss: boss
+    };
+  }
+  lv.n = n; lv.theme = th; lv.par = Math.round(lv.objs.length * 15 + 12);
+  _lvCache[n] = lv;
+  return lv;
+}
 function gemXs(lv) {
   var pts = [100].concat(lv.objs.map(function (o) { return o[1]; }), [1185]), xs = [];
   for (var i = 0; i < pts.length - 1; i++) {
@@ -115,7 +169,156 @@ function gemXs(lv) {
   return xs;
 }
 function levelUnlocked(n) { return n === 1 || (store.d.stars[n - 1] || 0) >= 1; }
-function totalStars() { var t = 0; for (var i = 1; i <= LEVELS.length; i++) t += store.d.stars[i] || 0; return t; }
+function totalStars() { var t = 0, k; for (k in store.d.stars) t += store.d.stars[k] || 0; return t; }
+function nextLevel() { var n = 1; while ((store.d.stars[n] || 0) >= 1) n++; return n; }
+
+/* ---- voices and lines ---- */
+var VOICE = { dad: { pitch: 0.55, rate: 0.92 }, mom: { pitch: 1.15, rate: 1.0 }, son: { pitch: 1.75, rate: 1.18 }, dau: { pitch: 1.5, rate: 1.08 } };
+var LINES = {
+  dad: {
+    start: ['Nna ya! Let us go, family!', 'Dad is on the job!', 'Stand back, I am about to be impressive.', 'These shoulders have a purpose.'],
+    push: ['Hnnnng! This rock owes me money!', 'I did not skip leg day for nothing!', 'Move, little rock. Move!'],
+    win: ['Ha ha! Too easy! Do not tell my back.', 'Another rock, another legend.', 'Did you see that? Please say you saw that.'],
+    wrong: ['Ah ah! That is not my kind of job.', 'I push things. Ask Mom about runes.'],
+    hurt: ['Ouch! My dignity!', 'Who put that there?'],
+    gem: ['Shiny! Dad likes shiny.', 'Ka m jide ya!'],
+    combo: ['Family power! Ndi be anyi!', 'Teamwork makes the dream work!'],
+    idle: ['Is anybody else hungry? Jollof, maybe?', 'I could carry this whole level. Just saying.']
+  },
+  mom: {
+    start: ['Let Mom read the runes.', 'Ndewo! Quiet please, I am thinking.', 'Wisdom loading... please wait.'],
+    push: ['Shapes, shapes, show yourselves.', 'I see it! The pattern is calling.'],
+    win: ['Mother knows best. Always.', 'Easy. Next puzzle, please!', 'Did anyone doubt me? Nobody? Good.'],
+    wrong: ['Oh no, wrong sign. Let us try again.', 'Hmm. Even I blink sometimes.'],
+    hurt: ['Eh! That hurt.', 'My head wrap is crooked now!'],
+    gem: ['Lovely little crystal!', 'Daalu, crystal.'],
+    combo: ['Beautiful teamwork, my dears!', 'This family is on fire!'],
+    idle: ['Who has been leaving crystals everywhere?', 'Nobody leaves my family behind.']
+  },
+  son: {
+    start: ['Zoom zoom! Son is ready!', 'I can fit anywhere. Anywhere!', 'Race you to the gate!'],
+    push: ['Squeeeeeze!', 'Tiny hero coming through!'],
+    win: ['I am the best squeezer ever!', 'Nobody saw me, I am a ninja!', 'Yay! Can I have a snack now?'],
+    wrong: ['That is too big for me!', 'I am small, not magic!'],
+    hurt: ['Owwww!', 'That was not funny!'],
+    gem: ['Mine! Mine! Mine!', 'Crystal get! Ha ha!'],
+    combo: ['Family combo! Woo hoo!', 'High five, everybody!'],
+    idle: ['Are we there yet? Are we there yet?', 'I can hear my tummy talking.']
+  },
+  dau: {
+    start: ['Hello, spirits! It is me!', 'Daughter to the rescue!', 'Birdie, we need your help!'],
+    push: ['Tweet tweet, tell me everything!', 'The little bird has a secret.'],
+    win: ['The spirits love me!', 'Igwe bu ike! Unity is strength!', 'Birdie says thank you!'],
+    wrong: ['The spirit is shy about that one.', 'That is not my job, silly.'],
+    hurt: ['Oh no, oh no!', 'Ouchie!'],
+    gem: ['Sparkly! Pretty!', 'I found one! I found one!'],
+    combo: ['We did it together!', 'Best family in the whole world!'],
+    idle: ['I can hear the wind giggling.', 'Everybody smile! Click!']
+  }
+};
+var Voice = {
+  voices: null, last: 0, pick: null,
+  on: function () { return store.d.voice && typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined'; },
+  find: function () {
+    if (this.pick !== null) return this.pick;
+    var list = []; try { list = speechSynthesis.getVoices() || []; } catch (e) {}
+    if (!list.length) return null;
+    var pick = null;
+    for (var i = 0; i < list.length && !pick; i++) if (/^en[-_](NG|ZA|GB)/i.test(list[i].lang)) pick = list[i];
+    for (var j = 0; j < list.length && !pick; j++) if (/^en/i.test(list[j].lang)) pick = list[j];
+    this.pick = pick || false; return this.pick;
+  },
+  speak: function (who, text) {
+    if (!this.on()) return;
+    try {
+      var u = new SpeechSynthesisUtterance(text.replace(/[~]/g, '')), v = VOICE[who] || VOICE.dad, f = this.find();
+      if (f) { u.voice = f; u.lang = f.lang; }
+      u.pitch = v.pitch; u.rate = v.rate; u.volume = 1;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+};
+function pickLine(who, ev) {
+  var a = (LINES[who] || {})[ev]; if (!a || !a.length) return '';
+  var key = who + ev, i = (pickLine.last[key] = ((pickLine.last[key] || 0) + 1 + Math.floor(Math.random() * (a.length - 1 || 1))) % a.length);
+  return a[i];
+}
+pickLine.last = {};
+
+/* ---- codex: Igbo words, proverbs, culture and nature ---- */
+var CODEX = [
+  { t: 'Word', h: 'Nnọọ', b: 'Welcome. Said when guests arrive.' },
+  { t: 'Word', h: 'Ndewo', b: 'A polite hello, and a way to say hope you are well.' },
+  { t: 'Word', h: 'Daalụ', b: 'Thank you. Daalụ nke ukwuu means thank you very much.' },
+  { t: 'Word', h: 'Biko', b: 'Please. A little word that opens many doors.' },
+  { t: 'Family', h: 'Nna and Nne', b: 'Nna means father and nne means mother.' },
+  { t: 'Family', h: 'Nwa and Ụmụ', b: 'Nwa is a child. Ụmụ means children.' },
+  { t: 'Family', h: 'Nwanne', b: 'Sibling, or sometimes a dear relative or friend. It literally means mother\'s child.' },
+  { t: 'Numbers', h: 'Otu, abụọ, atọ', b: 'One, two, three. Then anọ is four and ise is five.' },
+  { t: 'Numbers', h: 'Isii to iri', b: 'Isii is six, asaa is seven, asatọ is eight, itoolu is nine and iri is ten.' },
+  { t: 'Proverb', h: 'Igwe bụ ike', b: 'There is strength in unity. A family that works together can move big rocks.' },
+  { t: 'Proverb', h: 'Egbe bere, ugo bere', b: 'Let the kite perch and let the eagle perch. Live and let live; there is room for everyone.' },
+  { t: 'Proverb', h: 'Onye aghala nwanne ya', b: 'Let no one leave their sibling behind.' },
+  { t: 'Culture', h: 'Kola nut (oji)', b: 'Sharing a kola nut is a traditional sign of welcome and respect for guests.' },
+  { t: 'Culture', h: 'New Yam Festival', b: 'Iri ji celebrates the harvest of the first yams, with food, music and dance.' },
+  { t: 'Culture', h: 'Uli art', b: 'Uli is a traditional Igbo art of flowing line patterns, painted on walls and on skin.' },
+  { t: 'Culture', h: 'Nsibidi', b: 'Nsibidi is an old system of symbols from southeastern Nigeria, used long before many people wrote letters.' },
+  { t: 'Culture', h: 'Igbo-Ukwu bronzes', b: 'Skilled artists in Igbo-Ukwu cast fine bronze works more than a thousand years ago.' },
+  { t: 'Culture', h: 'Masquerades (mmanwu)', b: 'Colourful masquerades appear at festivals and represent spirits and ancestors.' },
+  { t: 'Culture', h: 'Ikenga', b: 'Ikenga is a carved figure linked with strength, effort and achievement.' },
+  { t: 'Culture', h: 'Beads and red caps', b: 'Coral beads and the red cap are proud parts of traditional dress.' },
+  { t: 'Nature', h: 'Crystals', b: 'Real crystals grow slowly as minerals settle into neat repeating shapes.' },
+  { t: 'Nature', h: 'African grey parrots', b: 'These clever birds can learn to copy many human words.' },
+  { t: 'Nature', h: 'Fireflies', b: 'Fireflies make light inside their bodies with almost no heat.' },
+  { t: 'Nature', h: 'Baobab trees', b: 'A baobab can store thousands of litres of water in its thick trunk.' },
+  { t: 'Nature', h: 'Elephants', b: 'Elephants live in family herds led by an older mother, much like a close family.' },
+  { t: 'Nature', h: 'Butterflies', b: 'Butterflies taste with their feet.' },
+  { t: 'Nature', h: 'Tortoises', b: 'Tortoises can live for well over fifty years, and some far longer.' },
+  { t: 'Nature', h: 'Harmattan', b: 'Harmattan is the dry, dusty wind that blows over West Africa in the cool season.' },
+  { t: 'Word', h: 'Ka chi fo', b: 'Good night. It means may the day break, or until the morning.' },
+  { t: 'Word', h: 'Ọ dị mma', b: 'It is good. A cheerful way to say all is well.' }
+];
+
+/* ---- daily quests and achievements ---- */
+var QUEST_POOL = [
+  { id: 'lv', text: 'Clear 2 levels', n: 2, g: 25, stat: 'levels' },
+  { id: 'cr', text: 'Collect 30 crystals', n: 30, g: 20, stat: 'crystals' },
+  { id: 'cb', text: 'Make 3 family combos', n: 3, g: 25, stat: 'combos' },
+  { id: 'un', text: 'Do a Unity Move', n: 1, g: 30, stat: 'unity' },
+  { id: 'sp', text: 'Beat the par time once', n: 1, g: 25, stat: 'speedy' },
+  { id: 'pf', text: 'Finish a level with 3 hearts', n: 1, g: 30, stat: 'perfect' },
+  { id: 'lv3', text: 'Clear 3 levels', n: 3, g: 40, stat: 'levels' }
+];
+var ACHS = [
+  { id: 'a1', text: 'First steps: clear level 1', g: 20, ok: function () { return (store.d.stars[1] || 0) >= 1; } },
+  { id: 'a2', text: 'Clear 10 levels', g: 60, ok: function () { return store.d.stats.levels >= 10; } },
+  { id: 'a3', text: 'Clear 50 levels', g: 250, ok: function () { return store.d.stats.levels >= 50; } },
+  { id: 'a4', text: 'Reach level 25', g: 120, ok: function () { return store.d.top >= 25; } },
+  { id: 'a5', text: 'Collect 500 crystals', g: 80, ok: function () { return store.d.stats.crystals >= 500; } },
+  { id: 'a6', text: 'Collect 3000 crystals', g: 300, ok: function () { return store.d.stats.crystals >= 3000; } },
+  { id: 'a7', text: 'Make 20 combos', g: 60, ok: function () { return store.d.stats.combos >= 20; } },
+  { id: 'a8', text: 'Do 5 Unity Moves', g: 80, ok: function () { return store.d.stats.unity >= 5; } },
+  { id: 'a9', text: 'Earn 30 stars', g: 100, ok: function () { return totalStars() >= 30; } },
+  { id: 'a10', text: 'Find 15 Codex entries', g: 100, ok: function () { return store.d.codex.length >= 15; } },
+  { id: 'a11', text: 'Beat the par time 10 times', g: 90, ok: function () { return store.d.stats.speedy >= 10; } },
+  { id: 'a12', text: 'Win 10 perfect levels', g: 150, ok: function () { return store.d.stats.perfect >= 10; } }
+];
+function ensureQuests() {
+  var d = store.d, today = dayKey();
+  if (d.quests.day === today && d.quests.items.length) return;
+  var r = rng(dayNum(today) + 7), pool = QUEST_POOL.slice(), items = [];
+  while (items.length < 3) { var i = Math.floor(r() * pool.length), q = pool.splice(i, 1)[0]; items.push({ id: q.id, base: d.stats[q.stat], done: false, claimed: false }); }
+  d.quests = { day: today, items: items }; store.save();
+}
+function questDef(id) { return QUEST_POOL.filter(function (q) { return q.id === id; })[0]; }
+function questProg(it) { var q = questDef(it.id); return Math.min(q.n, store.d.stats[q.stat] - it.base); }
+function claimable() {
+  ensureQuests(); var c = 0;
+  store.d.quests.items.forEach(function (it) { if (!it.claimed && questProg(it) >= questDef(it.id).n) c++; });
+  ACHS.forEach(function (a) { if (!store.d.ach[a.id] && a.ok()) c++; });
+  return c;
+}
+function bump(stat, n) { store.d.stats[stat] = (store.d.stats[stat] || 0) + (n || 1); }
 
 var CH = {
   dad: { name: 'Dad', skill: 'Push rocks', h: 282, idle: 'dad_idle', walk: 'dad_walk', act: 'dad_push', win: 'dad_celebrate', hurt: 'dad_hurt', speed: 230, x: 70, por: 'por_dad_active' },
@@ -279,7 +482,8 @@ var Title = new Phaser.Class({
     this.add.image(W / 2, H / 2, 'title').setDisplaySize(W, H);
     var start = function () {
       if (go) return; go = true;
-      Sfx.init(); Sfx.key();
+      Sfx.init(); Sfx.key(); autoFull();
+      try { if (Voice.on()) Voice.speak('dad', 'Nnoo! Welcome, family!'); } catch (e) {}
       self.cameras.main.fadeOut(350, 0, 0, 0);
       self.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
     };
@@ -299,28 +503,42 @@ var Hub = new Phaser.Class({
     this.pop = [];
     softBg(this, 0.5);
     this.bank = bankBar(this);
-    var title = txt(this, W / 2, 110, 'Crystal Family Quest', 76, '#ffd36f', { stroke: '#2a1808', strokeThickness: 10 });
-    this.tweens.add({ targets: title, scale: 1.03, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    txt(this, W / 2, 178, 'Stars collected  ' + totalStars() + ' / ' + (LEVELS.length * 3), 26, '#bfe6cf');
+    ensureQuests();
+    var logo = this.add.image(W / 2, 128, 'logo').setScale(0.52);
+    this.tweens.add({ targets: logo, scale: 0.545, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    var nl = nextLevel();
+    txt(this, W / 2, 262, 'Stars ' + totalStars() + '     Best level ' + Math.max(1, store.d.top) + '     Codex ' + store.d.codex.length + '/' + CODEX.length, 22, '#bfe6cf');
 
-    var fam = [['dad', 120], ['mom', 225], ['son', 1070], ['dau', 1175]];
+    var fam = [['dad', 110], ['mom', 215], ['son', 1075], ['dau', 1180]];
     fam.forEach(function (f, i) {
       var d = CH[f[0]], th = self.textures.get(d.idle).getSourceImage().height;
-      var s = self.add.image(f[1], 705, d.idle).setOrigin(0.5, 1).setScale(d.h / th);
-      self.tweens.add({ targets: s, y: 701, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      var s = self.add.image(f[1], 710, d.idle).setOrigin(0.5, 1).setScale(d.h / th);
+      self.tweens.add({ targets: s, y: 706, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     });
 
-    button(this, W / 2, 300, 380, 104, 'Play', function () { self.go('Levels'); }, { size: 48 });
-    button(this, 400, 440, 220, 76, 'Shop', function () { self.go('Shop'); }, { fill: 0x244a35 });
-    button(this, 640, 440, 220, 76, 'Upgrades', function () { self.go('Upgrades'); }, { fill: 0x244a35 });
-    var dly = button(this, 880, 440, 220, 76, 'Daily reward', function () { self.openDaily(); }, { fill: 0x244a35, size: 25 });
-    this.dot = this.add.circle(880 + 100, 440 - 32, 11, 0xe24b4a).setStrokeStyle(3, 0xffffff).setDepth(60);
-    this.tweens.add({ targets: this.dot, scale: 1.3, duration: 500, yoyo: true, repeat: -1 });
-    this.dot.setVisible(dailyStatus().can);
-    this.soundBtn = button(this, W / 2, 560, 220, 58, Sfx.on ? 'Sound on' : 'Sound off', function () {
-      Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save();
-      self.soundBtn.setLabel(Sfx.on ? 'Sound on' : 'Sound off');
-    }, { fill: 0x244a35, size: 24 });
+    button(this, W / 2, 345, 420, 100, 'Play  Level ' + nl, function () { self.go('Level', { n: nl }); }, { size: 42 });
+    var dot = function (x, y, on) {
+      var c = self.add.circle(x, y, 11, 0xe24b4a).setStrokeStyle(3, 0xffffff).setDepth(60);
+      self.tweens.add({ targets: c, scale: 1.3, duration: 500, yoyo: true, repeat: -1 });
+      c.setVisible(!!on); return c;
+    };
+    var row = function (arr, y) {
+      arr.forEach(function (it, i) {
+        var x = W / 2 + (i - (arr.length - 1) / 2) * 215;
+        button(self, x, y, 195, 66, it[0], it[1], { fill: 0x244a35, size: it[2] || 24 });
+        if (it[3] !== undefined) { var c = dot(x + 90, y - 28, it[3]); if (it[4]) it[4](c); }
+      });
+    };
+    var cl = claimable(), canSpin = store.d.spin !== dayKey();
+    row([['Levels', function () { self.go('Levels'); }], ['Shop', function () { self.go('Shop'); }], ['Upgrades', function () { self.go('Upgrades'); }], ['Daily gift', function () { self.openDaily(); }, 24, dailyStatus().can, function (c) { self.dot = c; }]], 430);
+    row([['Quests', function () { self.go('Quests'); }, 24, cl > 0], ['Codex', function () { self.go('Codex'); }], ['Lucky spin', function () { self.go('Spin'); }, 23, canSpin], ['Awards', function () { self.go('Quests', { tab: 'ach' }); }]], 510);
+    if (!this.dot) this.dot = dot(0, 0, false);
+    var tg = function (x, label, cb) {
+      var b = button(self, x, 612, 190, 52, label(), function () { cb(); b.setLabel(label()); }, { fill: 0x1a3a2a, size: 21 }); return b;
+    };
+    tg(W / 2 - 215, function () { return Sfx.on ? 'Sound on' : 'Sound off'; }, function () { Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); });
+    tg(W / 2, function () { return store.d.voice ? 'Voices on' : 'Voices off'; }, function () { store.d.voice = !store.d.voice; store.save(); if (store.d.voice) Voice.speak('dad', 'Nnoo! Welcome back, family!'); else { try { speechSynthesis.cancel(); } catch (e) {} } });
+    tg(W / 2 + 215, function () { return isFull() ? 'Exit full screen' : 'Full screen'; }, function () { toggleFull(); });
 
     this.cameras.main.fadeIn(350);
     if (dailyStatus().can && !hubDailyShown) {
@@ -328,11 +546,11 @@ var Hub = new Phaser.Class({
       this.time.delayedCall(600, function () { self.openDaily(); });
     }
   },
-  go: function (key) {
+  go: function (key, data) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
     this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start(key); });
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start(key, data); });
   },
   closePop: function () {
     this.pop.forEach(function (o) { if (o && o.destroy) o.destroy(); });
@@ -383,35 +601,216 @@ var Hub = new Phaser.Class({
 });
 
 /* ================= Levels ================= */
+var levelsPage = -1;
 var Levels = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Levels() { Phaser.Scene.call(this, 'Levels'); },
   create: function () {
     var self = this;
+    this.objs = [];
     softBg(this, 0.55);
     bankBar(this);
-    txt(this, W / 2, 80, 'Choose a level', 54, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
-    txt(this, W / 2, 132, 'Garden Realm', 26, '#bfe6cf');
-    LEVELS.forEach(function (lv, i) {
-      var n = i + 1, cx = 75 + 105 + i * 230, cy = 380, open = levelUnlocked(n), st = store.d.stars[n] || 0;
-      roundRect(self, cx - 105, cy - 170, 210, 340, 28, open ? 0x16301f : 0x0e1c14, 0.92, open ? EDGE : 0x33493c, 3);
-      txt(self, cx, cy - 90, String(n), 96, open ? '#ffd36f' : '#4a6355', { stroke: '#2a1808', strokeThickness: open ? 8 : 0 });
-      txt(self, cx, cy + 10, lv.name, 26, open ? CREAM : '#4a6355', { wordWrap: { width: 180 } });
-      for (var s = 0; s < 3; s++) starShape(self, cx + (s - 1) * 52, cy + 78, s < st, 20);
-      if (open) {
-        button(self, cx, cy + 135, 160, 52, st ? 'Replay' : 'Play', function () { self.start(n); }, { size: 26 });
-      } else {
-        txt(self, cx, cy + 135, 'Earn a star on level ' + (n - 1), 18, '#7d9486', { wordWrap: { width: 170 } });
-      }
-    });
+    txt(this, W / 2, 62, 'Choose a level', 50, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    this.sub = txt(this, W / 2, 112, '', 24, '#bfe6cf');
+    if (levelsPage < 0) levelsPage = Math.floor((nextLevel() - 1) / 5);
+    this.page = levelsPage;
     button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    this.prev = button(this, 450, 660, 150, 58, '< Prev', function () { self.setPage(self.page - 1); }, { fill: 0x244a35, size: 24 });
+    this.next = button(this, 830, 660, 150, 58, 'Next >', function () { self.setPage(self.page + 1); }, { fill: 0x244a35, size: 24 });
+    this.pageTxt = txt(this, 640, 660, '', 24, CREAM);
+    this.render();
     this.cameras.main.fadeIn(300);
+  },
+  setPage: function (p) {
+    var max = Math.floor((nextLevel() - 1) / 5);
+    if (p < 0 || p > max) { return; }
+    levelsPage = this.page = p; this.render();
+  },
+  render: function () {
+    var self = this;
+    this.objs.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = [];
+    var O = this.objs, first = this.page * 5 + 1;
+    this.sub.setText('Levels never end. Every level is a new place.');
+    this.pageTxt.setText('Levels ' + first + ' - ' + (first + 4));
+    this.prev.t.setAlpha(this.page > 0 ? 1 : 0.3);
+    for (var i = 0; i < 5; i++) {
+      (function (i) {
+        var n = first + i, lv = getLevel(n), cx = 140 + i * 250, cy = 380, open = levelUnlocked(n), st = store.d.stars[n] || 0;
+        O.push(roundRect(self, cx - 112, cy - 215, 224, 430, 28, open ? 0x16301f : 0x0e1c14, 0.94, open ? (lv.boss ? 0xc59bff : EDGE) : 0x33493c, 3));
+        var im = self.add.image(cx, cy - 135, lv.theme.bg).setDisplaySize(200, 112).setDepth(2);
+        if (!open) im.setTint(0x333333);
+        O.push(im);
+        O.push(txt(self, cx, cy - 40, String(n), 78, open ? (lv.boss ? '#e5d3ff' : '#ffd36f') : '#4a6355', { stroke: '#2a1808', strokeThickness: open ? 7 : 0 }));
+        O.push(txt(self, cx, cy + 28, lv.name, 21, open ? CREAM : '#4a6355', { wordWrap: { width: 200 } }));
+        O.push(txt(self, cx, cy + 58, lv.theme.realm + (lv.boss ? ' - Guardian' : ''), 16, open ? '#8fe8ff' : '#4a6355', { wordWrap: { width: 200 } }));
+        for (var s2 = 0; s2 < 3; s2++) O.push(starShape(self, cx + (s2 - 1) * 48, cy + 100, s2 < st, 18));
+        if (open) O.push(button(self, cx, cy + 158, 160, 52, st ? 'Replay' : 'Play', function () { self.start(n); }, { size: 25 }));
+        else O.push(txt(self, cx, cy + 158, 'Earn a star on level ' + (n - 1), 16, '#7d9486', { wordWrap: { width: 190 } }));
+      })(i);
+    }
   },
   start: function (n) {
     var self = this;
     if (this.leaving) return; this.leaving = true;
     this.cameras.main.fadeOut(250, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Level', { n: n }); });
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= Quests + Awards ================= */
+var Quests = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function Quests() { Phaser.Scene.call(this, 'Quests'); },
+  init: function (data) { this.tab = (data && data.tab) || 'quests'; },
+  create: function () {
+    var self = this;
+    this.objs = [];
+    softBg(this, 0.6);
+    this.bank = bankBar(this);
+    txt(this, W / 2, 60, 'Quests and Awards', 48, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    this.tabs = {
+      quests: button(this, 450, 130, 250, 54, 'Daily quests', function () { self.show('quests'); }, { size: 25 }),
+      ach: button(this, 830, 130, 250, 54, 'Awards', function () { self.show('ach'); }, { size: 25 })
+    };
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    ensureQuests();
+    this.show(this.tab);
+    this.cameras.main.fadeIn(300);
+  },
+  show: function (tab) {
+    var self = this, O = this.objs, d = store.d;
+    O.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = O = [];
+    this.tab = tab;
+    Object.keys(this.tabs).forEach(function (k) { self.tabs[k].setFill(k === tab ? GOLD : 0x244a35); self.tabs[k].t.setColor(k === tab ? '#10281c' : '#ffffff'); });
+    var rows = [];
+    if (tab === 'quests') {
+      O.push(txt(this, W / 2, 182, 'New quests arrive every day. Finish them for crystals.', 22, '#bfe6cf'));
+      d.quests.items.forEach(function (it) {
+        var q = questDef(it.id), pr = questProg(it);
+        rows.push({ text: q.text, prog: pr, max: q.n, g: q.g, done: pr >= q.n, claimed: it.claimed, claim: function () { it.claimed = true; d.bank += q.g; } });
+      });
+    } else {
+      O.push(txt(this, W / 2, 182, 'Awards are one-time rewards. Keep playing to earn them all.', 22, '#bfe6cf'));
+      ACHS.forEach(function (a) { rows.push({ text: a.text, prog: a.ok() ? 1 : 0, max: 1, g: a.g, done: a.ok(), claimed: !!d.ach[a.id], claim: function () { d.ach[a.id] = true; d.bank += a.g; } }); });
+    }
+    var per = tab === 'quests' ? 3 : 6, y0 = tab === 'quests' ? 290 : 232, gap = tab === 'quests' ? 110 : 62;
+    rows.slice(0, 12).forEach(function (r, i) {
+      var col = tab === 'ach' ? i % 2 : 0, row = tab === 'ach' ? Math.floor(i / 2) : i;
+      var cx = tab === 'ach' ? 340 + col * 600 : W / 2, cy = y0 + row * gap, w = tab === 'ach' ? 560 : 900, h = tab === 'ach' ? 54 : 90;
+      O.push(roundRect(self, cx - w / 2, cy - h / 2, w, h, 20, r.claimed ? 0x12261b : 0x16301f, 0.95, r.done && !r.claimed ? GOLD : 0x33493c, 3));
+      O.push(txt(self, cx - w / 2 + 16, cy - (tab === 'ach' ? 0 : 14), r.text, tab === 'ach' ? 19 : 28, r.claimed ? '#7d9486' : CREAM).setOrigin(0, 0.5));
+      if (tab === 'quests') {
+        O.push(roundRect(self, cx - w / 2 + 16, cy + 14, 460, 16, 8, 0x0e1c14, 1, 0x33493c, 2));
+        if (r.prog > 0) O.push(roundRect(self, cx - w / 2 + 18, cy + 16, 456 * r.prog / r.max, 12, 6, r.done ? 0x59d98e : 0x6fe3ff, 1));
+        O.push(txt(self, cx - w / 2 + 500, cy + 22, r.prog + '/' + r.max, 20, '#bfe6cf').setOrigin(0, 0.5));
+      }
+      var bx = cx + w / 2 - (tab === 'ach' ? 78 : 130);
+      O.push(self.add.image(bx - 62, cy, 'gem_blue').setScale(0.28).setDepth(5));
+      if (r.claimed) O.push(txt(self, bx + 16, cy, 'Done', tab === 'ach' ? 19 : 24, '#59d98e'));
+      else if (r.done) O.push(button(self, bx + 20, cy, tab === 'ach' ? 100 : 130, tab === 'ach' ? 40 : 50, 'Claim ' + r.g, function () { r.claim(); store.save(); Sfx.win(); self.bank.set(d.bank); burst(self, bx, cy, [0xffd36f, 0xfff2b8], 18); self.show(self.tab); }, { size: tab === 'ach' ? 15 : 20 }));
+      else O.push(txt(self, bx + 16, cy, '+' + r.g, tab === 'ach' ? 20 : 26, '#9fb8a8'));
+    });
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= Codex ================= */
+var Codex = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function Codex() { Phaser.Scene.call(this, 'Codex'); },
+  create: function () {
+    var self = this;
+    this.page = 0; this.objs = [];
+    softBg(this, 0.62);
+    txt(this, W / 2, 56, 'Family Codex', 48, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    this.sub = txt(this, W / 2, 106, '', 22, '#bfe6cf');
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    button(this, 450, 660, 150, 58, '< Prev', function () { if (self.page > 0) { self.page--; self.render(); } }, { fill: 0x244a35, size: 24 });
+    button(this, 830, 660, 150, 58, 'Next >', function () { if ((self.page + 1) * 6 < CODEX.length) { self.page++; self.render(); } }, { fill: 0x244a35, size: 24 });
+    this.render();
+    this.cameras.main.fadeIn(300);
+  },
+  render: function () {
+    var O = this.objs, self = this;
+    O.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = O = [];
+    this.sub.setText('Igbo words, proverbs, culture and nature. Clear levels to find new entries.  ' + store.d.codex.length + '/' + CODEX.length);
+    for (var i = 0; i < 6; i++) {
+      var idx = this.page * 6 + i; if (idx >= CODEX.length) break;
+      var e = CODEX[idx], have = store.d.codex.indexOf(idx) >= 0, cx = 340 + (i % 2) * 600, cy = 220 + Math.floor(i / 2) * 150;
+      O.push(roundRect(self, cx - 285, cy - 64, 570, 128, 22, have ? 0x16301f : 0x0e1c14, 0.95, have ? EDGE : 0x33493c, 3));
+      if (have) {
+        O.push(txt(self, cx - 268, cy - 40, e.t.toUpperCase(), 14, '#8fe8ff').setOrigin(0, 0.5));
+        O.push(txt(self, cx - 268, cy - 12, e.h, 28, '#ffd36f').setOrigin(0, 0.5));
+        O.push(txt(self, cx - 268, cy + 30, e.b, 18, '#ffffff', { wordWrap: { width: 535 }, align: 'left' }).setOrigin(0, 0.5));
+      } else {
+        O.push(txt(self, cx, cy, 'Locked  -  clear more levels', 22, '#4a6355'));
+      }
+    }
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= Lucky spin ================= */
+var SPIN = [5, 10, 15, 20, 30, 10, 50, 15];
+var Spin = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function Spin() { Phaser.Scene.call(this, 'Spin'); },
+  create: function () {
+    var self = this, cols = [0xff8fc0, 0x6fd6ff, 0xffd36f, 0xc59bff, 0x59d98e, 0xffb347, 0xff6b6b, 0x8fe8ff];
+    softBg(this, 0.6);
+    this.bank = bankBar(this);
+    txt(this, W / 2, 62, 'Lucky spin', 52, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    this.msg = txt(this, W / 2, 118, store.d.spin === dayKey() ? 'You already spun today. Come back tomorrow!' : 'One free spin every day.', 24, '#bfe6cf');
+    var R = 210, wheel = this.add.container(W / 2, 400);
+    var g = this.add.graphics();
+    for (var i = 0; i < 8; i++) {
+      var a0 = Phaser.Math.DegToRad(i * 45 - 90 - 22.5), a1 = Phaser.Math.DegToRad(i * 45 - 90 + 22.5);
+      g.fillStyle(cols[i], 1); g.slice(0, 0, R, a0, a1, false); g.fillPath();
+      g.lineStyle(3, 0x10281c, 1); g.slice(0, 0, R, a0, a1, false); g.strokePath();
+    }
+    wheel.add(g);
+    for (var j = 0; j < 8; j++) {
+      var ang = Phaser.Math.DegToRad(j * 45 - 90);
+      var t = txt(this, Math.cos(ang) * R * 0.68, Math.sin(ang) * R * 0.68, String(SPIN[j]), 34, '#10281c', { fontStyle: '800' }); t.setRotation(ang + Math.PI / 2);
+      wheel.add(t);
+    }
+    wheel.add(this.add.circle(0, 0, 34, 0x10281c).setStrokeStyle(4, GOLD));
+    this.add.triangle(W / 2, 400 - R - 12, 0, 0, 36, 0, 18, 34, 0xffd36f).setStrokeStyle(3, 0x2a1808).setDepth(5);
+    this.wheel = wheel; this.spun = store.d.spin === dayKey();
+    this.btn = button(this, W / 2, 660, 260, 62, this.spun ? 'Spun today' : 'Spin!', function () { self.go(); }, { size: 30, fill: this.spun ? 0x4a5a50 : 0x2e8b57 });
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    this.cameras.main.fadeIn(300);
+  },
+  go: function () {
+    var self = this;
+    if (this.spun) { toast(this, 'Come back tomorrow for another free spin.', 2200); return; }
+    this.spun = true; store.d.spin = dayKey();
+    var idx = Math.floor(Math.random() * 8), target = 360 * 5 - idx * 45;
+    var win = SPIN[idx];
+    store.d.bank += win; bump('spins'); store.save();
+    this.btn.setLabel('Spinning...');
+    this.tweens.add({ targets: this.wheel, angle: target, duration: 3600, ease: 'Cubic.easeOut', onComplete: function () {
+      Sfx.win(); self.bank.set(store.d.bank); burst(self, W / 2, 400, [0xffd36f, 0xfff2b8, 0xc59bff], 40);
+      self.msg.setText('You won ' + win + ' crystals!'); self.btn.setLabel('Spun today'); self.btn.setFill(0x4a5a50);
+      Voice.speak('son', 'I won ' + win + ' crystals! Yay!');
+    } });
+    for (var k = 0; k < 18; k++) this.time.delayedCall(k * 190, function () { Sfx.tone(500 + Math.random() * 300, 0.05, 'square', 0.03); });
   },
   back: function () {
     var self = this;
@@ -576,7 +975,8 @@ var Level = new Phaser.Class({
 
   init: function (data) {
     this.n = (data && data.n) || 1;
-    this.lv = LEVELS[this.n - 1] || LEVELS[0];
+    this.enter = !!(data && data.enter);
+    this.lv = getLevel(this.n);
   },
 
   create: function () {
@@ -594,22 +994,83 @@ var Level = new Phaser.Class({
     this.hintMs = (this.petItem && this.petItem.id === 'pet_bird') ? 9000 : this.lv.hint;
     this.events.once('shutdown', function () { self.alive = false; });
 
-    this.add.image(W / 2, H / 2 - 2, 'bg').setDisplaySize(W, H + 4).setDepth(-10);
-    if (this.lv.tint) this.add.rectangle(W / 2, H / 2, W, H, this.lv.tint.c, this.lv.tint.a).setDepth(-9);
-    if (this.lv.fireflies) this.buildFireflies();
+    this.add.image(W / 2, H / 2 - 2, this.lv.theme.bg).setDisplaySize(W, H + 4).setDepth(-10);
+    this.startedAt = this.time.now; this.lastSay = -1e9; this.lastIdle = this.time.now; this.bubble = null;
+    this.buildFx(this.lv.theme.fx);
     this.buildWorld(); this.buildChars(); this.buildHud(); this.buildInput();
     this.cameras.main.fadeIn(500);
-    this.time.delayedCall(800, function () { self.intro(); });
+    if (this.enter) this.emerge(); else this.time.delayedCall(800, function () { self.intro(); });
   },
 
   wait: function (ms) { var s = this; return new Promise(function (r) { s.time.delayedCall(ms, r); }); },
   tw: function (cfg) { var s = this; return new Promise(function (r) { cfg.onComplete = r; s.tweens.add(cfg); }); },
 
-  buildFireflies: function () {
-    for (var i = 0; i < 14; i++) {
-      var f = this.add.image(Phaser.Math.Between(40, W - 40), Phaser.Math.Between(180, 560), 'glow').setScale(0.35).setAlpha(0.8).setTint(0xfff2a8).setBlendMode(Phaser.BlendModes.ADD).setDepth(-5);
-      this.tweens.add({ targets: f, x: f.x + Phaser.Math.Between(-80, 80), y: f.y + Phaser.Math.Between(-50, 50), alpha: 0.25, duration: 1800 + i * 160, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  buildFx: function (kind) {
+    var self = this, i, n = 18, spec = {
+      petals: { tint: [0xffb3d9, 0xfff2a8], vy: 40, vx: -15, sc: 0.35, add: false },
+      sparks: { tint: [0x9fe8ff, 0xd9a8ff], vy: -10, vx: 0, sc: 0.3, add: true },
+      clouds: { tint: [0xffffff], vy: 0, vx: -25, sc: 0.8, add: false },
+      fireflies: { tint: [0xfff2a8], vy: -6, vx: 0, sc: 0.35, add: true },
+      confetti: { tint: [0xff8fc0, 0xffd36f, 0x6fd6ff, 0xc59bff], vy: 70, vx: 10, sc: 0.4, add: false },
+      dust: { tint: [0xffe2a0], vy: -4, vx: -40, sc: 0.3, add: true },
+      bubbles: { tint: [0xffffff, 0xbfefff], vy: -35, vx: 0, sc: 0.3, add: true },
+      snow: { tint: [0xffffff], vy: 55, vx: -12, sc: 0.28, add: false },
+      embers: { tint: [0xff9a3a, 0xffd06a], vy: -50, vx: 8, sc: 0.3, add: true }
+    }[kind] || { tint: [0xffffff], vy: 20, vx: 0, sc: 0.3, add: false };
+    this.fxList = [];
+    for (i = 0; i < n; i++) {
+      var f = this.add.image(Phaser.Math.Between(0, W), Phaser.Math.Between(60, 560), spec.add || kind === 'clouds' ? 'glow' : 'spark').setScale(spec.sc * (0.6 + Math.random() * 0.8)).setAlpha(0.35 + Math.random() * 0.5).setTint(spec.tint[i % spec.tint.length]).setDepth(-5);
+      if (spec.add) f.setBlendMode(Phaser.BlendModes.ADD);
+      f.vx = spec.vx * (0.5 + Math.random()); f.vy = spec.vy * (0.5 + Math.random()); f.sway = Math.random() * 6;
+      this.fxList.push(f);
     }
+  },
+  fxStep: function (s, t) {
+    if (!this.fxList) return;
+    for (var i = 0; i < this.fxList.length; i++) {
+      var f = this.fxList[i];
+      f.x += (f.vx + Math.sin(t / 700 + f.sway) * 14) * s; f.y += f.vy * s;
+      if (f.x < -40) f.x = W + 40; if (f.x > W + 40) f.x = -40;
+      if (f.y > 600) f.y = 40; if (f.y < 20) f.y = 590;
+    }
+  },
+
+  /* speech bubbles + voice */
+  say: function (who, ev, force) {
+    var now = this.time.now;
+    if (!force && now - this.lastSay < 3200) return;
+    var line = pickLine(who, ev); if (!line) return;
+    this.lastSay = now; this.lastIdle = now;
+    var c = this.ch[who]; if (!c) return;
+    if (this.bubble && this.bubble.scene) this.bubble.destroy();
+    var t = txt(this, 0, 0, line, 22, '#2a1808', { wordWrap: { width: 300 }, fontStyle: '700' });
+    var w = Math.max(120, t.width + 34), h = t.height + 22;
+    var g = this.add.graphics(); g.fillStyle(0xfffbe8, 1); g.fillRoundedRect(-w / 2, -h / 2, w, h, 20); g.lineStyle(3, 0xb88a3e, 1); g.strokeRoundedRect(-w / 2, -h / 2, w, h, 20);
+    g.fillStyle(0xfffbe8, 1); g.fillTriangle(-10, h / 2 - 1, 10, h / 2 - 1, 0, h / 2 + 14);
+    var bx = Phaser.Math.Clamp(c.x, w / 2 + 10, W - w / 2 - 10), by = GY - c.sprite.displayHeight - 78 - h / 2;
+    var b = this.add.container(bx, by, [g, t]).setDepth(1100).setAlpha(0).setScale(0.6);
+    this.bubble = b;
+    var self = this;
+    this.tweens.add({ targets: b, alpha: 1, scale: 1, duration: 180, ease: 'Back.easeOut' });
+    this.time.delayedCall(2800, function () { if (b.scene) self.tweens.add({ targets: b, alpha: 0, duration: 250, onComplete: function () { if (b.scene) b.destroy(); } }); });
+    Voice.speak(who, line);
+  },
+
+  emerge: function () {
+    var self = this, d = this.door;
+    this.busy = true;
+    var th = this.lv.theme;
+    ORDER.forEach(function (id, i) {
+      var c = self.ch[id]; c.lock = true; c.sprite.setAlpha(0); c.x = 62; c.sprite.x = 62; c.sprite.setTexture(c.def.walk);
+      self.time.delayedCall(700 + i * 520, function () {
+        if (!self.alive) return;
+        Sfx.blip();
+        c.sprite.setAlpha(1);
+        self.tweens.add({ targets: c, x: CH[id].x + 60, duration: 600, ease: 'Sine.easeOut', onComplete: function () { c.lock = false; c.targetX = c.x; if (id === 'son') { self.busy = false; self.intro(); } } });
+      });
+    });
+    this.tweens.add({ targets: this.doorGlow, alpha: 0, scale: 0.3, duration: 2600, delay: 400 });
+    this.burst(70, GY - 120, [th.door, 0xffffff], 24);
   },
 
   /* ----- world ----- */
@@ -618,7 +1079,13 @@ var Level = new Phaser.Class({
   buildWorld: function () {
     var self = this, lv = this.lv;
     this.gate = this.add.image(1185, GY - 30, 'gate').setOrigin(0.5, 1).setScale(0.62).setDepth(GY - 40);
-    this.gateGlow = this.add.image(1185, GY - 130, 'glow').setScale(0).setAlpha(0).setDepth(GY - 41).setTint(0xfff0b0).setBlendMode(Phaser.BlendModes.ADD);
+    this.gateGlow = this.add.image(1185, GY - 130, 'glow').setScale(0).setAlpha(0).setDepth(GY - 41).setTint(lv.theme.door).setBlendMode(Phaser.BlendModes.ADD);
+    this.door = null; this.doorGlow = null;
+    if (this.enter) {
+      this.door = this.add.image(70, GY - 30, 'gate').setOrigin(0.5, 1).setScale(0.62).setDepth(GY - 40).setFlipX(true);
+      this.doorGlow = this.add.image(70, GY - 130, 'glow').setScale(3.4).setAlpha(1).setDepth(GY - 41).setTint(lv.theme.door).setBlendMode(Phaser.BlendModes.ADD);
+    }
+    this.lucky = null;
 
     this.list = [];
     var total = 0;
@@ -650,6 +1117,19 @@ var Level = new Phaser.Class({
       total += 1;
     });
     this.total = total;
+    if (this.n >= 2) {
+      var lx = 260 + Math.floor(Math.random() * 700), ly = 330 + Math.floor(Math.random() * 60);
+      var lg = this.add.image(lx, ly, 'glow').setScale(1.2).setAlpha(0.7).setTint(0xffe27a).setBlendMode(Phaser.BlendModes.ADD).setDepth(GY - 5);
+      var ls = this.add.image(lx, ly, 'gem_gold').setScale(0.6).setDepth(GY - 4).setInteractive({ useHandCursor: true });
+      this.tweens.add({ targets: [lg, ls], y: ly - 24, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      var lself = this;
+      ls.on('pointerdown', function () {
+        if (lself.lucky === 'got' || lself.over) return; lself.lucky = 'got';
+        lself.burst(ls.x, ls.y, [0xffe27a, 0xffffff], 24); lself.addCrystals(5, ls.x, ls.y); lself.toast('Lucky gem! +5 crystals', 1800);
+        lg.destroy(); ls.destroy(); lself.say('son', 'gem', true);
+      });
+      this.time.delayedCall(14000 + Math.random() * 8000, function () { if (lself.lucky !== 'got' && ls.scene) lself.tweens.add({ targets: [lg, ls], alpha: 0, duration: 400, onComplete: function () { if (ls.scene) { ls.destroy(); lg.destroy(); } } }); });
+    }
   },
 
   /* ----- characters ----- */
@@ -744,17 +1224,21 @@ var Level = new Phaser.Class({
       self.keyCoins[o.id] = self.add.image(640 + (i - (n - 1) / 2) * 62, 51, CH[o.who].por).setScale(0.31).setDepth(600).setTint(0x4a4a4a).setAlpha(0.7);
     });
 
-    this.comboTxt = txt(this, 640, 112, '', 26, '#ffd36f', { stroke: '#2a1808', strokeThickness: 5 }).setDepth(600).setVisible(false);
+    this.comboTxt = txt(this, 640, 124, '', 26, '#ffd36f', { stroke: '#2a1808', strokeThickness: 5 }).setDepth(600).setVisible(false);
     this.comboBar = this.add.graphics().setDepth(600);
 
-    roundRect(this, 24, 118, 120, 40, 20, DARKG, 0.6, EDGE, 2).setDepth(590);
-    this.soundTxt = txt(this, 84, 138, Sfx.on ? 'Sound on' : 'Sound off', 20, CREAM).setDepth(601);
-    var zs = this.add.zone(84, 138, 120, 40).setDepth(602).setInteractive({ useHandCursor: true });
-    zs.on('pointerdown', function () { Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); self.soundTxt.setText(Sfx.on ? 'Sound on' : 'Sound off'); if (Sfx.on) Sfx.blip(); });
-    roundRect(this, 158, 118, 120, 40, 20, DARKG, 0.6, EDGE, 2).setDepth(590);
-    txt(this, 218, 138, 'Levels', 20, CREAM).setDepth(601);
-    var zm = this.add.zone(218, 138, 120, 40).setDepth(602).setInteractive({ useHandCursor: true });
-    zm.on('pointerdown', function () { Sfx.init(); self.leave('Levels'); });
+    txt(this, 640, 96, 'Level ' + this.n + '  -  ' + this.lv.theme.realm, 17, '#bfe6cf', { stroke: '#10281c', strokeThickness: 3 }).setDepth(601);
+    var mini = function (x, label, cb) {
+      roundRect(self, x - 60, 118, 120, 40, 20, DARKG, 0.6, EDGE, 2).setDepth(590);
+      var t = txt(self, x, 138, label, 20, CREAM).setDepth(601);
+      var z = self.add.zone(x, 138, 120, 40).setDepth(602).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', function () { Sfx.init(); cb(t); });
+      return t;
+    };
+    mini(84, Sfx.on ? 'Sound on' : 'Sound off', function (t) { Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); t.setText(Sfx.on ? 'Sound on' : 'Sound off'); if (Sfx.on) Sfx.blip(); });
+    mini(218, store.d.voice ? 'Voice on' : 'Voice off', function (t) { store.d.voice = !store.d.voice; store.save(); t.setText(store.d.voice ? 'Voice on' : 'Voice off'); if (store.d.voice) self.say(self.active, 'start', true); else { try { speechSynthesis.cancel(); } catch (e) {} } });
+    mini(352, 'Full screen', function () { toggleFull(); });
+    mini(486, 'Levels', function () { self.leave('Levels'); });
 
     roundRect(this, 322, 600, 636, 124, 30, DARKG, 0.82, EDGE, 3).setDepth(550);
     this.ports = {};
@@ -853,7 +1337,8 @@ var Level = new Phaser.Class({
       this.toast('Tap the path to walk. Tap an object to use a power.', 4200);
       this.time.delayedCall(4800, function () { if (!self.over && !self.busy) self.toast('Switch family members with the portraits. Finish every task to open the gate.', 4400); });
     } else {
-      this.toast('Level ' + this.n + ': ' + this.lv.name + '. Use different family members back to back for combos.', 4400);
+      this.toast(this.lv.theme.realm + ': ' + this.lv.name + (this.lv.boss ? '  (Guardian level, big rewards!)' : '') + '. Switch family members back to back for combos.', 4400);
+      this.say('dad', 'start', true);
     }
   },
 
@@ -873,6 +1358,7 @@ var Level = new Phaser.Class({
     if (this.hearts <= 0 || this.over) return;
     if (this.shield) { this.shield = false; this.toast('Shell guard blocked the hit.', 2000); Sfx.thud(); this.cameras.main.shake(120, 0.003); return; }
     this.hearts--;
+    this.say(this.active, 'hurt', true);
     var im = this.heartImgs[this.hearts];
     im.setTexture('heart_empty');
     this.tweens.add({ targets: im, scale: 1.4, duration: 120, yoyo: true });
@@ -914,8 +1400,9 @@ var Level = new Phaser.Class({
 
   comboFire: function () {
     var c = this.chain, bonus = Math.min(c, 4);
-    Sfx.combo();
+    Sfx.combo(); bump('combos'); this.say(this.lastWho, 'combo', true);
     if (c >= 4) {
+      bump('unity');
       this.banner('UNITY MOVE!', '#8fe8ff');
       if (this.hearts < 3) { this.heartImgs[this.hearts].setTexture('heart_full'); this.hearts++; }
       this.burst(W / 2, 300, [0xffd36f, 0x6fd6ff, 0xc59bff, 0xff8fc0], 40);
@@ -935,6 +1422,7 @@ var Level = new Phaser.Class({
     Sfx.key();
     this.progress();
     this.registerAction(o.who);
+    this.say(o.who, 'win', true);
   },
 
   /* ----- interactions ----- */
@@ -942,12 +1430,13 @@ var Level = new Phaser.Class({
     if (this.busy || this.over || this.pushing) return;
     if (o.done) { this.toast('Already done. Great work!', 1600); return; }
     if (this.active !== o.who) {
-      this.toast(WRONG[o.type], 2600); this.pulsePortrait(o.who); Sfx.blip(); return;
+      this.toast(WRONG[o.type], 2600); this.pulsePortrait(o.who); Sfx.blip(); this.say(this.active, 'wrong'); return;
     }
     if (o.stand > this.xMax() + 8) {
       this.toast('A big rock blocks the way. Move it first.', 2600); this.pulsePortrait('dad'); Sfx.blip(); return;
     }
     this.busy = true;
+    this.say(o.who, 'start', true);
     await this.walkTo(o.who, o.stand);
     if (!this.alive) return;
     this.ch[o.who].dir = 1;
@@ -1170,7 +1659,7 @@ var Level = new Phaser.Class({
     this.cameras.main.flash(500, 255, 244, 200);
     this.gateGlow.setAlpha(1);
     this.tweens.add({ targets: this.gateGlow, scale: 4.2, duration: 700, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: this.gate, alpha: 0.2, duration: 700 });
+    this.tweens.add({ targets: this.gate, alpha: 0.35, duration: 700 });
     this.burst(this.gate.x, this.gate.y - 120, [0xfff2b8, 0xffd36f, 0x6fd6ff], 40);
     var self = this;
     ORDER.forEach(function (id, i) {
@@ -1182,18 +1671,20 @@ var Level = new Phaser.Class({
 
   /* ----- end panels ----- */
   winPanel: function () {
-    var self = this, n = this.n;
+    var self = this, n = this.n, d = store.d;
     var ratio = this.crystals / Math.max(1, this.total);
     var stars = (ratio >= 0.85 && this.hearts >= 2) ? 3 : (ratio >= 0.6 ? 2 : 1);
+    var secs = Math.round((this.time.now - this.startedAt) / 1000), fast = secs <= this.lv.par;
     var cont = [];
     var add = function (o) { cont.push(o); return o; };
     var D = 1500;
     add(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.68).setDepth(D).setInteractive());
-    add(roundRect(this, W / 2 - 380, 50, 760, 620, 40, DARKG, 0.97, GOLD, 5).setDepth(D + 1));
-    add(txt(this, W / 2, 118, 'Level ' + n + ' clear!', 58, CREAM, { stroke: '#2a1808', strokeThickness: 6 }).setDepth(D + 2));
+    add(roundRect(this, W / 2 - 400, 40, 800, 650, 40, DARKG, 0.97, GOLD, 5).setDepth(D + 1));
+    add(txt(this, W / 2, 100, (this.lv.boss ? 'Guardian beaten!' : 'Level ' + n + ' clear!'), 54, CREAM, { stroke: '#2a1808', strokeThickness: 6 }).setDepth(D + 2));
+    add(txt(this, W / 2, 150, this.lv.theme.realm + '  -  ' + this.lv.name, 22, '#bfe6cf').setDepth(D + 2));
     for (var i = 0; i < 3; i++) {
       var on = i < stars;
-      var st = add(starShape(this, W / 2 + (i - 1) * 120, 225, on, 52).setScale(0).setDepth(D + 2));
+      var st = add(starShape(this, W / 2 + (i - 1) * 120, 235, on, 50).setScale(0).setDepth(D + 2));
       (function (st, i, on) {
         self.time.delayedCall(500 + i * 380, function () {
           if (!st.scene) return;
@@ -1202,26 +1693,66 @@ var Level = new Phaser.Class({
         });
       })(st, i, on);
     }
-    add(txt(this, W / 2, 322, 'Crystals  ' + this.crystals + ' / ' + Math.max(this.total, this.crystals), 36, '#ffffff').setDepth(D + 2));
-    add(txt(this, W / 2, 366, 'Hearts left  ' + this.hearts + ' / 3', 28, '#bfe6cf').setDepth(D + 2));
-    var chest = add(this.add.image(W / 2 - 200, 480, 'chest').setScale(0.5).setDepth(D + 2));
-    var bank = add(txt(this, W / 2 + 90, 440, 'Claim your crystals', 26, '#ffffff', { wordWrap: { width: 320 } }).setDepth(D + 2));
-    var claim = add(button(this, W / 2 + 90, 510, 230, 66, 'Claim', function () {
+    var parBonus = fast ? 3 : 0, bossBonus = this.lv.boss ? 15 : 0;
+    add(txt(this, W / 2, 322, 'Crystals  ' + this.crystals + ' / ' + Math.max(this.total, this.crystals), 34, '#ffffff').setDepth(D + 2));
+    add(txt(this, W / 2, 364, 'Hearts ' + this.hearts + '/3     Time ' + secs + 's (par ' + this.lv.par + 's)', 24, '#bfe6cf').setDepth(D + 2));
+    var extra = [];
+    if (fast) extra.push('Speedy family +3');
+    if (this.lv.boss) extra.push('Guardian bonus +15');
+    if (this.hearts === 3) extra.push('Perfect run!');
+    add(txt(this, W / 2, 400, extra.join('   '), 22, '#ffd36f').setDepth(D + 2));
+    var entryIdx = -1;
+    for (var k = 0; k < CODEX.length; k++) { var ci = (n - 1 + k) % CODEX.length; if (d.codex.indexOf(ci) < 0) { entryIdx = ci; break; } }
+    var chest = add(this.add.image(W / 2 - 220, 495, 'chest').setScale(0.5).setDepth(D + 2));
+    var bank = add(txt(this, W / 2 + 70, 465, 'Claim your crystals', 26, '#ffffff', { wordWrap: { width: 380 } }).setDepth(D + 2));
+    var claim = add(button(this, W / 2 + 70, 530, 230, 66, 'Claim', function () {
       Sfx.init(); Sfx.win();
-      var d = store.d;
-      d.bank += self.crystals;
+      var mystery = 2 + Math.floor(Math.random() * 11), total = self.crystals + parBonus + bossBonus + mystery;
+      d.bank += total;
       d.stars[n] = Math.max(d.stars[n] || 0, stars);
+      d.top = Math.max(d.top, n);
+      bump('levels'); bump('crystals', self.crystals); if (fast) bump('speedy'); if (self.hearts === 3) bump('perfect');
+      if (entryIdx >= 0) d.codex.push(entryIdx);
       store.save();
       claim.destroy();
-      bank.setText('Crystal bank: ' + d.bank + '\n+' + self.crystals + ' added');
-      self.tweens.add({ targets: chest, scale: 0.6, duration: 200, yoyo: true });
+      bank.setText('Crystal bank: ' + d.bank + '\n+' + total + ' added (mystery chest +' + mystery + ')');
+      self.tweens.add({ targets: chest, scale: 0.62, duration: 200, yoyo: true });
       self.burst(chest.x, chest.y, [0xffd36f, 0x6fd6ff, 0xc59bff], 30);
-      var by = 600, xs = n < LEVELS.length ? [W / 2 - 215, W / 2, W / 2 + 215] : [W / 2 - 110, W / 2 + 110];
-      if (n < LEVELS.length) add(button(self, xs[0], by, 190, 62, 'Next level', function () { self.leave2('Level', { n: n + 1 }); }, { depth: D + 5, size: 25 }));
-      add(button(self, n < LEVELS.length ? xs[1] : xs[0], by, 190, 62, 'Replay', function () { self.leave2('Level', { n: n }); }, { depth: D + 5, fill: 0x244a35, size: 25 }));
-      add(button(self, n < LEVELS.length ? xs[2] : xs[1], by, 190, 62, 'Levels', function () { self.leave2('Levels'); }, { depth: D + 5, fill: 0x244a35, size: 25 }));
-      if (n >= LEVELS.length) add(txt(self, W / 2, 565, 'You finished the Garden Realm!', 24, '#ffd36f').setDepth(D + 2));
+      var by = 628, xs = [W / 2 - 230, W / 2, W / 2 + 230];
+      add(button(self, xs[0], by, 210, 62, 'Next level', function () { self.passDoor(cont); }, { depth: D + 5, size: 26 }));
+      add(button(self, xs[1], by, 190, 62, 'Replay', function () { self.leave2('Level', { n: n }); }, { depth: D + 5, fill: 0x244a35, size: 25 }));
+      add(button(self, xs[2], by, 190, 62, 'Levels', function () { self.leave2('Levels'); }, { depth: D + 5, fill: 0x244a35, size: 25 }));
+      if (entryIdx >= 0) add(txt(self, W / 2, 580, 'New Codex entry: ' + CODEX[entryIdx].h, 22, '#8fe8ff').setDepth(D + 2));
+      var ready = claimable();
+      if (ready > 0) add(txt(self, W / 2, 598, ready + ' quest or award reward' + (ready > 1 ? 's are' : ' is') + ' ready on the home screen', 17, '#ffd36f').setDepth(D + 2));
+      self.say('dau', 'win', true);
     }, { depth: D + 5, size: 30 }));
+  },
+
+  passDoor: async function (cont) {
+    if (this.leaving) return; this.leaving = true;
+    var self = this, n = this.n;
+    cont.forEach(function (o) { if (o && o.scene) o.destroy(); });
+    this.toast('Through the door we go!', 2000);
+    Sfx.key();
+    this.gate.setAlpha(1);
+    this.gateGlow.setAlpha(1).setScale(2.2);
+    this.marker.setVisible(false);
+    var gx = this.gate.x;
+    var walkers = ORDER.map(function (id, i) {
+      var c = self.ch[id]; c.lock = true; c.dir = 1; c.sprite.setTexture(c.def.walk); c.sprite.setFlipX(false);
+      return self.wait(i * 380).then(function () {
+        return self.tw({ targets: c, x: gx - 12, duration: 1500 + (3 - i) * 100, ease: 'Sine.easeInOut', onUpdate: function () { c.sprite.x = c.x; } });
+      }).then(function () { return self.tw({ targets: c.sprite, alpha: 0, scale: c.scale * 0.8, duration: 260 }); }).then(function () { Sfx.blip(); self.burst(gx, GY - 100, [0xfff2b8, 0xffffff], 10); });
+    });
+    await Promise.all(walkers);
+    if (!this.alive) return;
+    this.tweens.add({ targets: this.gateGlow, scale: 9, duration: 700, ease: 'Quad.easeIn' });
+    Sfx.win();
+    this.cameras.main.flash(600, 255, 255, 255);
+    await this.wait(650);
+    this.cameras.main.fadeOut(300, 255, 255, 255);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Level', { n: n + 1, enter: true }); });
   },
 
   leave2: function (key, data) {
@@ -1272,14 +1803,16 @@ var Level = new Phaser.Class({
     }
 
     var tnow = this.time.now;
+    this.fxStep(s, time);
+    if (!this.busy && !this.over && tnow - this.lastIdle > 11000) { this.lastIdle = tnow; this.say(ORDER[Math.floor(Math.random() * 4)], 'idle', true); }
     if (this.chain > 0) {
       var left = COMBO_MS - (tnow - this.chainAt);
       if (left <= 0) { this.chain = 0; this.comboTxt.setVisible(false); this.comboBar.clear(); }
       else if (this.chain >= 2) {
         this.comboTxt.setVisible(true).setText('Combo x' + this.chain);
         var g = this.comboBar; g.clear();
-        g.fillStyle(0x10281c, 0.8); g.fillRoundedRect(560, 134, 160, 10, 5);
-        g.fillStyle(GOLD, 1); g.fillRoundedRect(562, 136, 156 * (left / COMBO_MS), 6, 3);
+        g.fillStyle(0x10281c, 0.8); g.fillRoundedRect(560, 146, 160, 10, 5);
+        g.fillStyle(GOLD, 1); g.fillRoundedRect(562, 148, 156 * (left / COMBO_MS), 6, 3);
       } else { this.comboTxt.setVisible(false); this.comboBar.clear(); }
     }
 
@@ -1288,7 +1821,7 @@ var Level = new Phaser.Class({
         var g2 = this.gems[i];
         if (!g2.got && Math.abs(a.x - g2.x) < this.reach) {
           g2.got = true; g2.glow.destroy();
-          this.crystals += 1; this.updateCounter(); Sfx.collect();
+          this.crystals += 1; this.updateCounter(); Sfx.collect(); this.say(this.active, 'gem');
           this.burst(g2.sprite.x, g2.sprite.y, [0x6fd6ff, 0xc59bff, 0xffd36f], 12);
           this.tweens.add({ targets: g2.sprite, y: g2.sprite.y - 60, alpha: 0, scale: 0.9, duration: 350, onComplete: (function (sp) { return function () { sp.destroy(); }; })(g2.sprite) });
           this.progress();
@@ -1315,13 +1848,25 @@ var Level = new Phaser.Class({
   }
 });
 
+/* ================= fullscreen ================= */
+function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function toggleFull() {
+  try {
+    var el = document.documentElement;
+    if (isFull()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+    else { var f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) { var p = f.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(function () {}); } }
+  } catch (e) {}
+  try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e2) {}
+}
+function autoFull() { if (!isFull()) toggleFull(); }
+
 /* ================= start ================= */
 function start() {
   window.__cfq = new Phaser.Game({
     type: Phaser.AUTO, width: W, height: H, parent: 'game', backgroundColor: '#10241a',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3 }, render: { antialias: true },
-    scene: [Boot, Title, Hub, Levels, Shop, Upgrades, Level]
+    scene: [Boot, Title, Hub, Levels, Quests, Codex, Spin, Shop, Upgrades, Level]
   });
 }
 var started = false;
