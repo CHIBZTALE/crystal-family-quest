@@ -33,3 +33,23 @@ Controls: tap the path to walk, tap an object to use a power, tap a portrait (or
 - Voices: each family member has their own pitch and speed and says funny lines in speech bubbles (uses the phone's built-in text-to-speech; Voices can be turned off).
 - Keep-playing features: daily gift, daily quests, awards, family Codex (Igbo words, proverbs, culture, nature), lucky spin, mystery chest, lucky gems, par-time bonus, combos and Unity Moves.
 - Art: `tools/envs.py` paints the world backgrounds, `tools/logo.py` renders the logo and icon. To use your own AI-made backgrounds, replace `assets/env_*.jpg` (1280x720; keep the ground path near the bottom, y about 585).
+
+
+## Version 2.1
+
+- Voices on Android: the app now uses the phone's own text-to-speech engine through the `@capacitor-community/text-to-speech` plugin (the browser voice is not reliable inside an Android WebView). If a device has no speech voice at all, characters make little chirp sounds instead.
+- The spirit bird now tells a different proverb every time, in Igbo with the meaning spoken aloud.
+- New home buttons: Village (buildings earn crystals for up to 8 hours while you are away), Save progress, Credits, How to play.
+- Animated title screen and "A game by Cj's Family" line.
+
+### Turning on Google sign-in (one-time setup)
+
+Sign-in saves progress to the player's own Google Drive app-data folder (hidden, only this game can read it).
+
+1. Go to https://console.cloud.google.com and create a project.
+2. APIs and Services > Library: enable the **Google Drive API**.
+3. APIs and Services > OAuth consent screen: set it up (External), add the scopes `drive.appdata` and `userinfo.email`, and add yourself as a test user while testing.
+4. Credentials > Create credentials > OAuth client ID > **Web application**. Under Authorized JavaScript origins add the address where the game is hosted (for example `https://chibztale.github.io`).
+5. Copy the client ID and paste it into `GOOGLE_CLIENT_ID` near the top of the "Account" section in `game.js`.
+
+Google sign-in works on a normal web page. Inside the Android app Google may block the pop-up, so the **backup code** (Save progress > Copy my code) is the reliable way to move progress between phones.

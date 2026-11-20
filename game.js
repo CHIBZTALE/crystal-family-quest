@@ -11,7 +11,7 @@ var store = {
   d: null,
   defaults: function () {
     return { bank: 0, stars: {}, upg: { dad: 0, mom: 0, son: 0, dau: 0 }, owned: [], equip: { pet: '', aura: '', trail: '' }, daily: { last: '', streak: 0 }, sound: true,
-      voice: true, top: 0, quests: { day: '', items: [] }, ach: {}, stats: { levels: 0, combos: 0, unity: 0, crystals: 0, speedy: 0, spins: 0, perfect: 0 }, codex: [], spin: '' };
+      voice: true, pvi: 0, acct: { email: '' }, village: { b: {}, last: 0, stash: 0 }, top: 0, quests: { day: '', items: [] }, ach: {}, stats: { levels: 0, combos: 0, unity: 0, crystals: 0, speedy: 0, spins: 0, perfect: 0 }, codex: [], spin: '' };
   },
   load: function () {
     var base = this.defaults(), raw = {};
@@ -26,6 +26,9 @@ var store = {
     if (raw.daily) { d.daily.last = raw.daily.last || ''; d.daily.streak = raw.daily.streak || 0; }
     if (raw.sound === false) d.sound = false;
     if (raw.voice === false) d.voice = false;
+    if (typeof raw.pvi === 'number') d.pvi = raw.pvi;
+    if (raw.acct && typeof raw.acct.email === 'string') d.acct.email = raw.acct.email;
+    if (raw.village && raw.village.b) d.village = { b: raw.village.b, last: raw.village.last || 0, stash: raw.village.stash || 0 };
     if (typeof raw.top === 'number') d.top = raw.top;
     if (raw.quests && Array.isArray(raw.quests.items)) d.quests = raw.quests;
     if (raw.ach && typeof raw.ach === 'object') d.ach = raw.ach;
@@ -35,7 +38,8 @@ var store = {
     this.d = d;
     return d;
   },
-  save: function () { try { localStorage.setItem('cfq-save', JSON.stringify(this.d)); } catch (e) {} }
+  save: function () { try { localStorage.setItem('cfq-save', JSON.stringify(this.d)); } catch (e) {} if (window.__cfqCloudSoon) window.__cfqCloudSoon(); },
+  apply: function (obj) { try { localStorage.setItem('cfq-save', JSON.stringify(obj)); } catch (e) {} this.load(); }
 };
 store.load();
 
@@ -216,27 +220,61 @@ var LINES = {
     idle: ['I can hear the wind giggling.', 'Everybody smile! Click!']
   }
 };
+var VOICE_EXTRA = { bird: { pitch: 1.9, rate: 1.05 } };
 var Voice = {
-  voices: null, last: 0, pick: null,
-  on: function () { return store.d.voice && typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined'; },
+  pick: null, warmed: false, tts: null, failed: 0,
+  native: function () {
+    try {
+      var C = window.Capacitor;
+      if (C && C.isNativePlatform && C.isNativePlatform() && C.registerPlugin) { if (!this.tts) this.tts = C.registerPlugin('TextToSpeech'); return this.tts; }
+    } catch (e) {}
+    return null;
+  },
+  web: function () { return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined'; },
+  available: function () { return !!(this.native() || this.web()); },
+  on: function () { return store.d.voice; },
+  unlock: function () {
+    if (this.warmed || !this.web()) return; this.warmed = true;
+    try {
+      var u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u);
+      if (speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', function () { Voice.pick = null; });
+    } catch (e) {}
+  },
   find: function () {
     if (this.pick !== null) return this.pick;
     var list = []; try { list = speechSynthesis.getVoices() || []; } catch (e) {}
     if (!list.length) return null;
-    var pick = null;
-    for (var i = 0; i < list.length && !pick; i++) if (/^en[-_](NG|ZA|GB)/i.test(list[i].lang)) pick = list[i];
-    for (var j = 0; j < list.length && !pick; j++) if (/^en/i.test(list[j].lang)) pick = list[j];
+    var pick = null, i;
+    for (i = 0; i < list.length && !pick; i++) if (/^en[-_](NG|ZA|GB)/i.test(list[i].lang)) pick = list[i];
+    for (i = 0; i < list.length && !pick; i++) if (/^en/i.test(list[i].lang)) pick = list[i];
     this.pick = pick || false; return this.pick;
   },
   speak: function (who, text) {
-    if (!this.on()) return;
-    try {
-      var u = new SpeechSynthesisUtterance(text.replace(/[~]/g, '')), v = VOICE[who] || VOICE.dad, f = this.find();
-      if (f) { u.voice = f; u.lang = f.lang; }
-      u.pitch = v.pitch; u.rate = v.rate; u.volume = 1;
-      speechSynthesis.cancel(); speechSynthesis.speak(u);
-    } catch (e) {}
-  }
+    if (!store.d.voice) return;
+    var v = VOICE[who] || VOICE_EXTRA[who] || VOICE.dad, self = this, clean = text.replace(/[~]/g, '');
+    var nat = this.native();
+    if (nat) {
+      try {
+        var pr = nat.speak({ text: clean, lang: 'en-US', rate: v.rate, pitch: v.pitch, volume: 1.0, category: 'ambient', queueStrategy: 0 });
+        if (pr && pr.catch) pr.catch(function () { Sfx.babble(who, clean); });
+      } catch (e) { Sfx.babble(who, clean); }
+      return;
+    }
+    if (this.web()) {
+      try {
+        var u = new SpeechSynthesisUtterance(clean), f = this.find();
+        if (f) { u.voice = f; u.lang = f.lang; } else u.lang = 'en-US';
+        u.pitch = v.pitch; u.rate = v.rate; u.volume = 1;
+        u.onerror = function () { self.failed++; };
+        if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+        if (speechSynthesis.resume) speechSynthesis.resume();
+        return;
+      } catch (e) {}
+    }
+    Sfx.babble(who, clean);
+  },
+  stop: function () { try { var n = this.native(); if (n && n.stop) n.stop(); else if (this.web()) speechSynthesis.cancel(); } catch (e) {} }
 };
 function pickLine(who, ev) {
   var a = (LINES[who] || {})[ev]; if (!a || !a.length) return '';
@@ -244,6 +282,27 @@ function pickLine(who, ev) {
   return a[i];
 }
 pickLine.last = {};
+
+/* ---- proverbs the spirit bird tells (a different one each time) ---- */
+var PROVERBS = [
+  { ig: 'Igwe bụ ike.', en: 'There is strength in unity. Bring the whole family together.' },
+  { ig: 'Egbe bere, ugo bere.', en: 'Let the kite perch and let the eagle perch. There is room for everyone, so share kindly.' },
+  { ig: 'Onye aghala nwanne ya.', en: 'Let no one leave their sibling behind. We finish this together.' },
+  { ig: 'Otu osisi anaghị abụ ọhịa.', en: 'One tree does not make a forest. We need each other.' },
+  { ig: 'Nwata kwọọ aka, ya na ndị okenye rie nri.', en: 'A child who washes his hands can eat with the elders. Good habits open big doors.' },
+  { ig: 'Onye kwe, chi ya ekwe.', en: 'When a person says yes with all their heart, their chi says yes too. Believe, and try!' },
+  { ig: 'Aka nri kwọọ aka ekpe, aka ekpe akwọọ aka nri.', en: 'The right hand washes the left, and the left washes the right. Help each other and both stay clean.' },
+  { ig: 'Onye ji onye n\'ala ji onwe ya n\'ala.', en: 'He who holds another down on the ground holds himself down too. Lift each other up.' },
+  { ig: 'Ebe onye dara ka chi ya kwaturu ya.', en: 'Where a person falls is where his chi laid him down. So get up and try again!' },
+  { ig: 'Aka ajaaja na-ebute onu mmanu mmanu.', en: 'Busy hands bring food to the mouth. Hard work brings sweet rewards.' }
+];
+function nextProverb() {
+  var order = [], i, r = rng(11);
+  for (i = 0; i < PROVERBS.length; i++) order.push(i);
+  for (i = order.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t; }
+  var idx = order[store.d.pvi % order.length]; store.d.pvi++; store.save();
+  return PROVERBS[idx];
+}
 
 /* ---- codex: Igbo words, proverbs, culture and nature ---- */
 var CODEX = [
@@ -339,6 +398,7 @@ var WRONG = {
 var Sfx = {
   ctx: null, on: store.d.sound,
   init: function () {
+    Voice.unlock();
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
     if (this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) {} }
   },
@@ -362,7 +422,12 @@ var Sfx = {
   key: function () { var s = this; [523, 659, 784].forEach(function (f, i) { s.tone(f, 0.2, 'triangle', 0.07, 0, i * 0.09); }); },
   win: function () { var s = this; [523, 659, 784, 1047, 1319].forEach(function (f, i) { s.tone(f, 0.3, 'triangle', 0.08, 0, i * 0.12); }); },
   combo: function () { var s = this; [660, 880, 1100].forEach(function (f, i) { s.tone(f, 0.16, 'square', 0.04, 0, i * 0.07); }); },
-  rune: function (i) { this.tone([392, 440, 523, 659][i], 0.32, 'sine', 0.09); }
+  rune: function (i) { this.tone([392, 440, 523, 659][i], 0.32, 'sine', 0.09); },
+  babble: function (who, text) {
+    if (!this.ctx || !store.d.voice) return;
+    var base = { dad: 110, mom: 240, son: 420, dau: 340, bird: 700 }[who] || 200, n = Math.min(26, Math.max(6, Math.round(text.length / 2.2))), i;
+    for (i = 0; i < n; i++) this.tone(base * (1 + 0.35 * Math.sin(i * 1.7) + (i % 3) * 0.12), 0.07, 'triangle', 0.045, 0, i * 0.085);
+  }
 };
 
 /* ================= ui helpers ================= */
@@ -478,18 +543,52 @@ var Title = new Phaser.Class({
   Extends: Phaser.Scene,
   initialize: function Title() { Phaser.Scene.call(this, 'Title'); },
   create: function () {
-    var self = this, go = false;
-    this.add.image(W / 2, H / 2, 'title').setDisplaySize(W, H);
+    var self = this, go = false, i;
+    var bgi = this.add.image(W / 2, H / 2, 'title').setDisplaySize(W, H).setDepth(0);
+    bgi.setScale(bgi.scaleX * 1.12, bgi.scaleY * 1.12);
+    this.tweens.add({ targets: bgi, scaleX: bgi.scaleX / 1.12, scaleY: bgi.scaleY / 1.12, duration: 5200, ease: 'Cubic.easeOut' });
+    // golden light sweep across the name, repeating
+    var sweep = this.add.rectangle(-300, 190, 130, 420, 0xfff2b8, 0.0).setRotation(0.35).setBlendMode(Phaser.BlendModes.ADD).setDepth(5);
+    var runSweep = function () {
+      if (!sweep.scene) return;
+      sweep.x = 180; sweep.setAlpha(0);
+      self.tweens.add({ targets: sweep, x: 1100, alpha: 0.38, duration: 900, ease: 'Sine.easeInOut', yoyo: false,
+        onComplete: function () { self.tweens.add({ targets: sweep, alpha: 0, duration: 250 }); } });
+      self.time.delayedCall(4200, runSweep);
+    };
+    this.time.delayedCall(1700, runSweep);
+    // glow behind the title that breathes
+    var halo = this.add.image(W / 2, 175, 'glow').setScale(6.5, 2.4).setTint(0xffd36f).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(3);
+    this.tweens.add({ targets: halo, alpha: 0.4, duration: 1500, delay: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // twinkling stars around the title
+    for (i = 0; i < 26; i++) {
+      var st = this.add.image(Phaser.Math.Between(180, 1100), Phaser.Math.Between(60, 300), 'spark').setTint(i % 3 ? 0xfff2b8 : 0xbfefff).setScale(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(6);
+      this.tweens.add({ targets: st, scale: 0.7 + (i % 4) * 0.25, alpha: 0.2, duration: 700 + (i % 5) * 220, delay: i * 140, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+    // crystals drifting up from below
+    for (i = 0; i < 12; i++) {
+      var gm = this.add.image(Phaser.Math.Between(40, 1240), 760 + i * 30, ['gem_blue', 'gem_purple', 'gem_pink', 'gem_gold'][i % 4]).setScale(0.22 + (i % 3) * 0.07).setAlpha(0.8).setDepth(4);
+      this.tweens.add({ targets: gm, y: -80, angle: 25, duration: 9000 + i * 700, delay: i * 500, repeat: -1 });
+    }
+    // pulsing ring on the start button
+    var ring = this.add.ellipse(654, 652, 330, 74).setStrokeStyle(4, 0xffe9a0, 0.9).setDepth(6);
+    this.tweens.add({ targets: ring, scaleX: 1.12, scaleY: 1.3, alpha: 0, duration: 1100, repeat: -1 });
+    // opening burst on the title
+    this.time.delayedCall(500, function () { burst(self, W / 2, 170, [0xffe9a0, 0xffffff, 0x9fe8ff, 0xc59bff], 36); Sfx.tone(784, 0.2, 'triangle', 0.05); });
+    // credit line at the very bottom
+    var cj = txt(this, W / 2, 704, 'A GAME BY CJ\'S FAMILY', 17, '#ffe9a0', { stroke: '#2a1808', strokeThickness: 4, fontStyle: '700' }).setDepth(8).setAlpha(0);
+    cj.setLetterSpacing && cj.setLetterSpacing(4);
+    this.tweens.add({ targets: cj, alpha: 1, duration: 900, delay: 1200 });
     var start = function () {
       if (go) return; go = true;
       Sfx.init(); Sfx.key(); autoFull();
-      try { if (Voice.on()) Voice.speak('dad', 'Nnoo! Welcome, family!'); } catch (e) {}
+      Voice.speak('dad', 'Welcome, family! Let us go on an adventure!');
       self.cameras.main.fadeOut(350, 0, 0, 0);
       self.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
     };
     this.input.on('pointerdown', start);
     this.input.keyboard.on('keydown', start);
-    this.cameras.main.fadeIn(400);
+    this.cameras.main.fadeIn(900);
   }
 });
 
@@ -516,7 +615,7 @@ var Hub = new Phaser.Class({
       self.tweens.add({ targets: s, y: 706, duration: 900 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     });
 
-    button(this, W / 2, 345, 420, 100, 'Play  Level ' + nl, function () { self.go('Level', { n: nl }); }, { size: 42 });
+    button(this, W / 2, 330, 420, 92, 'Play  Level ' + nl, function () { self.go('Level', { n: nl }); }, { size: 40 });
     var dot = function (x, y, on) {
       var c = self.add.circle(x, y, 11, 0xe24b4a).setStrokeStyle(3, 0xffffff).setDepth(60);
       self.tweens.add({ targets: c, scale: 1.3, duration: 500, yoyo: true, repeat: -1 });
@@ -525,20 +624,25 @@ var Hub = new Phaser.Class({
     var row = function (arr, y) {
       arr.forEach(function (it, i) {
         var x = W / 2 + (i - (arr.length - 1) / 2) * 215;
-        button(self, x, y, 195, 66, it[0], it[1], { fill: 0x244a35, size: it[2] || 24 });
-        if (it[3] !== undefined) { var c = dot(x + 90, y - 28, it[3]); if (it[4]) it[4](c); }
+        button(self, x, y, 195, 62, it[0], it[1], { fill: 0x244a35, size: it[2] || 24 });
+        if (it[3] !== undefined) { var c = dot(x + 90, y - 26, it[3]); if (it[4]) it[4](c); }
       });
     };
-    var cl = claimable(), canSpin = store.d.spin !== dayKey();
-    row([['Levels', function () { self.go('Levels'); }], ['Shop', function () { self.go('Shop'); }], ['Upgrades', function () { self.go('Upgrades'); }], ['Daily gift', function () { self.openDaily(); }, 24, dailyStatus().can, function (c) { self.dot = c; }]], 430);
-    row([['Quests', function () { self.go('Quests'); }, 24, cl > 0], ['Codex', function () { self.go('Codex'); }], ['Lucky spin', function () { self.go('Spin'); }, 23, canSpin], ['Awards', function () { self.go('Quests', { tab: 'ach' }); }]], 510);
+    var cl = claimable(), canSpin = store.d.spin !== dayKey(), vp = villagePending();
+    row([['Levels', function () { self.go('Levels'); }], ['Village', function () { self.go('Village'); }, 24, vp >= 10], ['Shop', function () { self.go('Shop'); }], ['Upgrades', function () { self.go('Upgrades'); }]], 412);
+    row([['Daily gift', function () { self.openDaily(); }, 24, dailyStatus().can, function (c) { self.dot = c; }], ['Quests', function () { self.go('Quests'); }, 24, cl > 0], ['Awards', function () { self.go('Quests', { tab: 'ach' }); }], ['Lucky spin', function () { self.go('Spin'); }, 23, canSpin]], 486);
+    row([['Codex', function () { self.go('Codex'); }], ['Save progress', function () { self.go('Account'); }, 21], ['Credits', function () { self.go('About', { tab: 'credits' }); }], ['How to play', function () { self.go('About', { tab: 'how' }); }, 22]], 560);
     if (!this.dot) this.dot = dot(0, 0, false);
     var tg = function (x, label, cb) {
-      var b = button(self, x, 612, 190, 52, label(), function () { cb(); b.setLabel(label()); }, { fill: 0x1a3a2a, size: 21 }); return b;
+      var b = button(self, x, 638, 190, 48, label(), function () { cb(); b.setLabel(label()); }, { fill: 0x1a3a2a, size: 20 }); return b;
     };
     tg(W / 2 - 215, function () { return Sfx.on ? 'Sound on' : 'Sound off'; }, function () { Sfx.init(); Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); });
-    tg(W / 2, function () { return store.d.voice ? 'Voices on' : 'Voices off'; }, function () { store.d.voice = !store.d.voice; store.save(); if (store.d.voice) Voice.speak('dad', 'Nnoo! Welcome back, family!'); else { try { speechSynthesis.cancel(); } catch (e) {} } });
+    tg(W / 2, function () { return store.d.voice ? 'Voices on' : 'Voices off'; }, function () {
+      Sfx.init(); store.d.voice = !store.d.voice; store.save();
+      if (store.d.voice) { Voice.speak('mom', 'Hello family! Can you hear me?'); if (!Voice.available()) toast(self, 'This device has no speech voice, so you will hear chirps instead.', 3000, 900); } else Voice.stop();
+    });
     tg(W / 2 + 215, function () { return isFull() ? 'Exit full screen' : 'Full screen'; }, function () { toggleFull(); });
+    txt(this, W / 2, 696, 'A GAME BY CJ\'S FAMILY', 16, '#ffe9a0', { stroke: '#2a1808', strokeThickness: 4, fontStyle: '700' }).setDepth(70);
 
     this.cameras.main.fadeIn(350);
     if (dailyStatus().can && !hubDailyShown) {
@@ -815,6 +919,280 @@ var Spin = new Phaser.Class({
   back: function () {
     var self = this;
     if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= Family Village ================= */
+var BUILD = [
+  { id: 'yam', name: 'Yam Farm', per: 4, cost: [30, 70, 130, 220, 340], col: 0xd8a24a, ch: 'Y', desc: 'Grows yams for the family.' },
+  { id: 'kola', name: 'Kola Tree', per: 5, cost: [40, 90, 160, 260, 400], col: 0x59a860, ch: 'K', desc: 'Kola nuts to welcome guests.' },
+  { id: 'drum', name: 'Drum Circle', per: 6, cost: [50, 110, 190, 300, 460], col: 0xc0613a, ch: 'D', desc: 'Music brings the village joy.' },
+  { id: 'story', name: 'Story Hut', per: 7, cost: [60, 130, 220, 340, 520], col: 0x8a6ad0, ch: 'S', desc: 'Elders tell tales by the fire.' },
+  { id: 'mine', name: 'Crystal Mine', per: 9, cost: [80, 160, 270, 420, 620], col: 0x4fb6e6, ch: 'C', desc: 'Digs real crystals.' },
+  { id: 'market', name: 'Market Stall', per: 12, cost: [100, 200, 330, 500, 750], col: 0xe0558f, ch: 'M', desc: 'Trading earns the most.' }
+];
+function villageRate() { var r = 0; BUILD.forEach(function (b) { r += b.per * (store.d.village.b[b.id] || 0); }); return r; }
+function villagePending() {
+  var v = store.d.village, rate = villageRate();
+  if (!v.last) return Math.floor(v.stash || 0);
+  var h = Math.max(0, Math.min(8, (Date.now() - v.last) / 3600000));
+  return Math.floor((v.stash || 0) + rate * h);
+}
+function villageFold() { var v = store.d.village; v.stash = villagePending(); v.last = Date.now(); }
+var Village = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function Village() { Phaser.Scene.call(this, 'Village'); },
+  create: function () {
+    var self = this;
+    this.objs = [];
+    softBg(this, 0.55);
+    this.bank = bankBar(this);
+    txt(this, W / 2, 56, 'Family Village', 50, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    txt(this, W / 2, 104, 'Build your village. It earns crystals for you, even while you are away (up to 8 hours).', 21, '#bfe6cf');
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    this.render();
+    this.cameras.main.fadeIn(300);
+  },
+  render: function () {
+    var self = this, O = this.objs, d = store.d;
+    O.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = O = [];
+    var pend = villagePending(), rate = villageRate();
+    O.push(txt(this, 470, 150, 'Earning ' + rate + ' crystals per hour', 24, '#ffd36f'));
+    O.push(button(this, 880, 150, 300, 56, pend > 0 ? 'Collect ' + pend : 'Nothing to collect', function () { self.collect(); }, { size: 24, fill: pend > 0 ? 0x2e8b57 : 0x4a5a50 }));
+    BUILD.forEach(function (b, i) {
+      var col = i % 3, row = Math.floor(i / 3), cx = 245 + col * 395, cy = 305 + row * 250, lvl = d.village.b[b.id] || 0;
+      O.push(roundRect(self, cx - 180, cy - 108, 360, 216, 26, 0x16301f, 0.94, lvl ? EDGE : 0x33493c, 3));
+      var ic = self.add.circle(cx - 118, cy - 52, 36, b.col).setStrokeStyle(4, 0xffffff).setDepth(3); O.push(ic);
+      O.push(txt(self, cx - 118, cy - 52, b.ch, 38, '#ffffff', { fontStyle: '800' }).setDepth(4));
+      O.push(txt(self, cx + 30, cy - 66, b.name, 25, CREAM));
+      O.push(txt(self, cx + 30, cy - 34, lvl ? '+' + (b.per * lvl) + ' per hour' : b.desc, 17, lvl ? '#8fe8ff' : '#bfe6cf', { wordWrap: { width: 230 } }));
+      for (var p = 0; p < 5; p++) O.push(self.add.circle(cx - 100 + p * 28, cy + 6, 9, p < lvl ? GOLD : 0x2f4a3b).setStrokeStyle(2, p < lvl ? 0xb87a1e : 0x486a58).setDepth(3));
+      if (lvl < 5) {
+        var cost = b.cost[lvl];
+        O.push(self.add.image(cx - 78, cy + 62, 'gem_blue').setScale(0.28).setDepth(62));
+        O.push(button(self, cx + 10, cy + 62, 230, 52, (lvl ? 'Upgrade  ' : 'Build  ') + cost, function () { self.buy(b); }, { size: 23, fill: d.bank >= cost ? 0x2e8b57 : 0x4a5a50 }));
+      } else O.push(button(self, cx, cy + 62, 230, 52, 'Fully built', function () { toast(self, b.name + ' is fully built.', 1600); }, { size: 22, fill: GOLD, color: '#10281c' }));
+    });
+  },
+  collect: function () {
+    var d = store.d, n = villagePending();
+    if (n <= 0) { toast(this, 'Nothing yet. Build more and check back later.', 2000); return; }
+    d.bank += n; d.village.stash = 0; d.village.last = Date.now(); store.save();
+    this.bank.set(d.bank); Sfx.win(); burst(this, 880, 150, [0xffd36f, 0xfff2b8], 26);
+    toast(this, '+' + n + ' crystals from the village', 2200); this.render();
+  },
+  buy: function (b) {
+    var d = store.d, lvl = d.village.b[b.id] || 0;
+    if (lvl >= 5) return;
+    var cost = b.cost[lvl];
+    if (d.bank < cost) { toast(this, 'Not enough crystals yet. Play a level to earn more.', 2200); Sfx.wrong(); return; }
+    villageFold();
+    d.bank -= cost; d.village.b[b.id] = lvl + 1; store.save();
+    this.bank.set(d.bank); Sfx.win(); burst(this, W / 2, 360, [0xffd36f, 0x6fd6ff, 0xc59bff], 30);
+    toast(this, b.name + (lvl ? ' upgraded to level ' + (lvl + 1) : ' built!'), 2200);
+    this.render();
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= About / Credits / How to play ================= */
+var ABOUT = {
+  about: [
+    ['Crystal Family Quest', 34, '#ffd36f'],
+    ['A warm family adventure inspired by Igbo culture. A father, a mother, a son and a daughter travel through ever-changing worlds, using their different powers together to open magic gates.', 22, '#ffffff'],
+    ['Every level is a new place, a new puzzle and a new chance to pick up a word, a proverb or a fact about culture and nature from the Family Codex.', 22, '#ffffff'],
+    ['It is a game about teamwork. Igwe bụ ike: there is strength in unity.', 22, '#8fe8ff']
+  ],
+  credits: [
+    ['Created by', 20, '#8fe8ff'],
+    ['Ohizu Chibuike Paschal', 36, '#ffd36f'],
+    ['A game by Cj\'s Family', 22, '#ffffff'],
+    ['The family in the game', 20, '#8fe8ff'],
+    ['Father: Ohizu Chibuike Paschal', 24, '#ffffff'],
+    ['Mother: Zainab Joy Paschal', 24, '#ffffff'],
+    ['Son: Jidenna Caleb Paschal', 24, '#ffffff'],
+    ['Daughter: Habit Ijeoma Suleiman', 24, '#ffffff'],
+    ['Made with Phaser 3 and Capacitor. Game code written with help from Claude by Anthropic.', 16, '#9fb8a8']
+  ],
+  how: [
+    ['How to play', 34, '#ffd36f'],
+    ['1. Tap the path to walk. Tap a portrait to switch family members.', 22, '#ffffff'],
+    ['2. Dad pushes rocks (tap fast). Mom solves rune puzzles. Son squeezes under bridges. Daughter talks to the spirit bird.', 22, '#ffffff'],
+    ['3. Finish every task to open the gate, then walk through the door into a brand new world.', 22, '#ffffff'],
+    ['4. Use different family members back to back for combos. Four in a row is a Unity Move that heals a heart.', 22, '#ffffff'],
+    ['5. Tap lucky gems, beat the par time, and keep your hearts for more stars. Spend crystals in the Shop, Upgrades and Village.', 22, '#ffffff']
+  ]
+};
+var About = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function About() { Phaser.Scene.call(this, 'About'); },
+  init: function (data) { this.tab = (data && data.tab) || 'about'; },
+  create: function () {
+    var self = this;
+    this.objs = [];
+    softBg(this, 0.62);
+    this.tabs = {};
+    [['about', 'The game', 400], ['credits', 'Credits', 640], ['how', 'How to play', 880]].forEach(function (t) {
+      self.tabs[t[0]] = button(self, t[2], 70, 220, 54, t[1], function () { self.show(t[0]); }, { size: 24 });
+    });
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    txt(this, W / 2, 696, 'A GAME BY CJ\'S FAMILY', 16, '#ffe9a0', { stroke: '#2a1808', strokeThickness: 4, fontStyle: '700' });
+    this.show(this.tab);
+    this.cameras.main.fadeIn(300);
+  },
+  show: function (tab) {
+    var self = this, O = this.objs;
+    O.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = O = [];
+    Object.keys(this.tabs).forEach(function (k) { self.tabs[k].setFill(k === tab ? GOLD : 0x244a35); self.tabs[k].t.setColor(k === tab ? '#10281c' : '#ffffff'); });
+    O.push(roundRect(this, 170, 118, 940, 500, 36, DARKG, 0.92, EDGE, 3));
+    var lines = ABOUT[tab], y = 160;
+    lines.forEach(function (l) {
+      var t = txt(self, W / 2, y, l[0], l[1], l[2], { wordWrap: { width: 840 }, align: 'center' }); t.setOrigin(0.5, 0); O.push(t);
+      y += t.height + (l[1] > 30 ? 16 : 18);
+    });
+    if (tab === 'credits') {
+      var im = ORDER.map(function (id, i) { return self.add.image(W / 2 + (i - 1.5) * 110, 590, CH[id].por).setScale(0.5).setDepth(3); });
+      im.forEach(function (o) { O.push(o); });
+    }
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true;
+    this.cameras.main.fadeOut(250, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
+  }
+});
+
+/* ================= Account: Google sign-in and backup ================= */
+// To turn on Google sign-in, create an OAuth "Web application" client ID in Google Cloud
+// (see README) and paste it here.
+var GOOGLE_CLIENT_ID = '';
+var Cloud = {
+  token: '', email: '', fileId: '', timer: null, busy: false, msg: '',
+  scoreOf: function (o) { var t = 0, k; for (k in (o.stars || {})) t += o.stars[k] || 0; return (o.top || 0) * 100000 + t * 100 + ((o.stats && o.stats.levels) || 0); },
+  loadLib: function () {
+    return new Promise(function (res, rej) {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) { res(); return; }
+      var sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+      sc.onload = function () { res(); }; sc.onerror = function () { rej(new Error('Could not load Google sign-in. Check your internet connection.')); };
+      document.head.appendChild(sc);
+    });
+  },
+  api: function (url, opt) {
+    opt = opt || {}; opt.headers = Object.assign({ Authorization: 'Bearer ' + Cloud.token }, opt.headers || {});
+    return fetch(url, opt).then(function (r) { if (!r.ok) throw new Error('Google said ' + r.status); return r; });
+  },
+  signIn: function () {
+    if (!GOOGLE_CLIENT_ID) return Promise.reject(new Error('setup'));
+    return Cloud.loadLib().then(function () {
+      return new Promise(function (res, rej) {
+        var tc = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID, scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email',
+          callback: function (r) { if (r && r.access_token) { Cloud.token = r.access_token; res(); } else rej(new Error('Sign-in was cancelled.')); },
+          error_callback: function () { rej(new Error('Sign-in was cancelled.')); }
+        });
+        tc.requestAccessToken({ prompt: '' });
+      });
+    }).then(function () { return Cloud.api('https://www.googleapis.com/oauth2/v3/userinfo').then(function (r) { return r.json(); }); })
+      .then(function (u) { Cloud.email = u.email || 'your Google account'; store.d.acct.email = Cloud.email; store.save(); return Cloud.sync(); });
+  },
+  findFile: function () {
+    return Cloud.api('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=' + encodeURIComponent("name='cfq-save.json'") + '&fields=files(id)').then(function (r) { return r.json(); })
+      .then(function (j) { Cloud.fileId = (j.files && j.files[0] && j.files[0].id) || ''; return Cloud.fileId; });
+  },
+  upload: function () {
+    var meta = Cloud.fileId ? {} : { name: 'cfq-save.json', parents: ['appDataFolder'] };
+    var body = '--cfq\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(meta) + '\r\n--cfq\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(store.d) + '\r\n--cfq--';
+    var url = Cloud.fileId ? 'https://www.googleapis.com/upload/drive/v3/files/' + Cloud.fileId + '?uploadType=multipart' : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    return Cloud.api(url, { method: Cloud.fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=cfq' }, body: body }).then(function (r) { return r.json(); }).then(function (j) { if (j.id) Cloud.fileId = j.id; });
+  },
+  sync: function () {
+    // newest progress wins: download the cloud copy, keep whichever has gone further
+    return Cloud.findFile().then(function () {
+      if (!Cloud.fileId) return Cloud.upload().then(function () { return 'Progress saved to your Google account.'; });
+      return Cloud.api('https://www.googleapis.com/drive/v3/files/' + Cloud.fileId + '?alt=media').then(function (r) { return r.json(); }).then(function (cloud) {
+        if (Cloud.scoreOf(cloud) > Cloud.scoreOf(store.d)) { cloud.acct = { email: Cloud.email }; store.apply(cloud); return 'Welcome back! Your saved progress was loaded.'; }
+        return Cloud.upload().then(function () { return 'Progress saved to your Google account.'; });
+      });
+    });
+  },
+  soon: function () {
+    if (!Cloud.token) return;
+    clearTimeout(Cloud.timer);
+    Cloud.timer = setTimeout(function () { Cloud.upload().catch(function () { Cloud.token = ''; }); }, 4000);
+  },
+  signOut: function () { Cloud.token = ''; Cloud.email = ''; store.d.acct.email = ''; store.save(); }
+};
+window.__cfqCloudSoon = function () { Cloud.soon(); };
+function exportCode() { try { return 'CFQ1.' + btoa(unescape(encodeURIComponent(JSON.stringify(store.d)))); } catch (e) { return ''; } }
+function importCode(code) {
+  try {
+    code = String(code || '').trim(); if (code.indexOf('CFQ1.') !== 0) return false;
+    var o = JSON.parse(decodeURIComponent(escape(atob(code.slice(5))))); if (!o || typeof o !== 'object' || typeof o.bank !== 'number') return false;
+    store.apply(o); return true;
+  } catch (e) { return false; }
+}
+var Account = new Phaser.Class({
+  Extends: Phaser.Scene,
+  initialize: function Account() { Phaser.Scene.call(this, 'Account'); },
+  create: function () {
+    var self = this;
+    this.objs = [];
+    softBg(this, 0.62);
+    txt(this, W / 2, 60, 'Save your progress', 50, CREAM, { stroke: '#2a1808', strokeThickness: 6 });
+    button(this, 120, 660, 180, 58, 'Back', function () { self.back(); }, { fill: 0x244a35, size: 26 });
+    this.render();
+    this.cameras.main.fadeIn(300);
+  },
+  setMsg: function (m) { Cloud.msg = m; if (!this.gone) this.render(); },
+  render: function () {
+    var self = this, O = this.objs;
+    O.forEach(function (o) { if (o && o.destroy) o.destroy(); }); this.objs = O = [];
+    var email = Cloud.email || store.d.acct.email, signed = !!Cloud.token;
+    O.push(roundRect(this, 140, 110, 1000, 190, 30, DARKG, 0.93, EDGE, 3));
+    O.push(txt(this, W / 2, 148, signed ? 'Signed in as ' + email : (email ? 'Last signed in as ' + email : 'Not signed in'), 28, signed ? '#59d98e' : CREAM));
+    O.push(txt(this, W / 2, 186, 'Sign in with your Google (Gmail) account to keep your crystals, stars and village safe, and carry them to any phone.', 19, '#bfe6cf', { wordWrap: { width: 900 } }));
+    if (!signed) O.push(button(this, W / 2, 252, 400, 58, 'Sign in with Google', function () { self.signIn(); }, { size: 25 }));
+    else {
+      O.push(button(this, W / 2 - 130, 252, 230, 54, 'Save now', function () { self.syncNow(); }, { size: 24 }));
+      O.push(button(this, W / 2 + 130, 252, 230, 54, 'Sign out', function () { Cloud.signOut(); self.setMsg('Signed out.'); }, { size: 24, fill: 0x244a35 }));
+    }
+    O.push(roundRect(this, 140, 320, 1000, 190, 30, DARKG, 0.93, EDGE, 3));
+    O.push(txt(this, W / 2, 352, 'Backup code (works without signing in)', 26, CREAM));
+    O.push(txt(this, W / 2, 388, 'Copy your code and keep it somewhere safe. Paste it on another phone to restore everything.', 19, '#bfe6cf', { wordWrap: { width: 900 } }));
+    O.push(button(this, W / 2 - 130, 450, 230, 54, 'Copy my code', function () { self.copy(); }, { size: 23 }));
+    O.push(button(this, W / 2 + 130, 450, 230, 54, 'Restore from code', function () { self.restore(); }, { size: 22, fill: 0x244a35 }));
+    O.push(txt(this, W / 2, 560, Cloud.msg || '', 22, '#ffd36f', { wordWrap: { width: 940 } }));
+    O.push(txt(this, W / 2, 610, 'Your progress is also saved on this device automatically.', 17, '#9fb8a8'));
+  },
+  signIn: function () {
+    var self = this; this.setMsg('Opening Google sign-in...');
+    Cloud.signIn().then(function (m) { self.setMsg(m); Sfx.win(); }).catch(function (e) {
+      if (e && e.message === 'setup') self.setMsg('Google sign-in is not switched on in this build yet. The owner needs to add a Google client ID (steps are in the README). Use the backup code meanwhile.');
+      else self.setMsg((e && e.message) || 'Sign-in did not work. Try the backup code instead.');
+    });
+  },
+  syncNow: function () { var self = this; Cloud.upload().then(function () { self.setMsg('Saved to your Google account.'); Sfx.key(); }).catch(function () { Cloud.token = ''; self.setMsg('Please sign in again to save.'); }); },
+  copy: function () {
+    var code = exportCode(), self = this;
+    try { navigator.clipboard.writeText(code).then(function () { self.setMsg('Code copied. Keep it safe!'); }, function () { window.prompt('Copy your backup code:', code); }); }
+    catch (e) { try { window.prompt('Copy your backup code:', code); } catch (e2) { self.setMsg('Could not copy on this device.'); } }
+  },
+  restore: function () {
+    var code = ''; try { code = window.prompt('Paste your backup code:') || ''; } catch (e) {}
+    if (!code) { this.setMsg('No code entered.'); return; }
+    if (importCode(code)) { this.setMsg('Progress restored! Go back home to see it.'); Sfx.win(); } else this.setMsg('That code did not work. Check you copied all of it.');
+  },
+  back: function () {
+    var self = this;
+    if (this.leaving) return; this.leaving = true; this.gone = true;
     this.cameras.main.fadeOut(250, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', function () { self.scene.start('Hub'); });
   }
@@ -1236,7 +1614,7 @@ var Level = new Phaser.Class({
       return t;
     };
     mini(84, Sfx.on ? 'Sound on' : 'Sound off', function (t) { Sfx.on = !Sfx.on; store.d.sound = Sfx.on; store.save(); t.setText(Sfx.on ? 'Sound on' : 'Sound off'); if (Sfx.on) Sfx.blip(); });
-    mini(218, store.d.voice ? 'Voice on' : 'Voice off', function (t) { store.d.voice = !store.d.voice; store.save(); t.setText(store.d.voice ? 'Voice on' : 'Voice off'); if (store.d.voice) self.say(self.active, 'start', true); else { try { speechSynthesis.cancel(); } catch (e) {} } });
+    mini(218, store.d.voice ? 'Voice on' : 'Voice off', function (t) { store.d.voice = !store.d.voice; store.save(); t.setText(store.d.voice ? 'Voice on' : 'Voice off'); if (store.d.voice) self.say(self.active, 'start', true); else Voice.stop(); });
     mini(352, 'Full screen', function () { toggleFull(); });
     mini(486, 'Levels', function () { self.leave('Levels'); });
 
@@ -1483,13 +1861,13 @@ var Level = new Phaser.Class({
   dialog: function (who, big, small) {
     var self = this;
     return new Promise(function (resolve) {
-      var w = 760, h = 190;
-      var bg = roundRect(self, -w / 2, -h / 2, w, h, 30, DARKG, 0.92, GOLD, 3);
-      var t0 = txt(self, 0, -62, who, 22, '#8fe8ff');
-      var t1 = txt(self, 0, -18, big, 44, CREAM);
-      var t2 = txt(self, 0, 38, small, 26, '#ffffff', { wordWrap: { width: 680 } });
-      var hint = txt(self, w / 2 - 74, h / 2 - 22, 'Tap to continue', 15, '#9fb8a8');
-      var c = self.add.container(W / 2, 250, [bg, t0, t1, t2, hint]).setDepth(1200).setAlpha(0);
+      var w = 860, h = 250;
+      var bg = roundRect(self, -w / 2, -h / 2, w, h, 30, DARKG, 0.94, GOLD, 3);
+      var t0 = txt(self, 0, -98, who, 22, '#8fe8ff');
+      var t1 = txt(self, 0, -48, big, 36, CREAM, { wordWrap: { width: 800 } });
+      var t2 = txt(self, 0, 34, small, 25, '#ffffff', { wordWrap: { width: 780 } });
+      var hint = txt(self, w / 2 - 84, h / 2 - 20, 'Tap to continue', 15, '#9fb8a8');
+      var c = self.add.container(W / 2, 270, [bg, t0, t1, t2, hint]).setDepth(1200).setAlpha(0);
       self.tweens.add({ targets: c, alpha: 1, duration: 250 });
       var done = false;
       var finish = function () {
@@ -1497,7 +1875,7 @@ var Level = new Phaser.Class({
         self.tweens.add({ targets: c, alpha: 0, duration: 250, onComplete: function () { c.destroy(); resolve(); } });
       };
       self.time.delayedCall(500, function () { self.input.once('pointerdown', finish); });
-      self.time.delayedCall(6500, finish);
+      self.time.delayedCall(9000, finish);
     });
   },
 
@@ -1507,7 +1885,10 @@ var Level = new Phaser.Class({
     this.tweens.add({ targets: bird, scale: bird.scale * 1.2, duration: 200, yoyo: true, repeat: 1 });
     Sfx.tone(988, 0.12, 'triangle', 0.06); Sfx.tone(1318, 0.16, 'triangle', 0.06, 0, 0.1);
     await this.wait(700);
-    await this.dialog('Spirit bird says', 'Igwe bu ike.', 'There is strength in unity. Bring the whole family together.');
+    var pv = nextProverb();
+    Voice.speak('bird', 'Listen, little one. ' + pv.en);
+    await this.dialog('Spirit bird says', pv.ig, pv.en);
+    Voice.stop();
     if (!this.alive) return;
     this.pose(c, 'magic');
     var gx = this.gate.x, gy = this.gate.y - 150;
@@ -1866,7 +2247,7 @@ function start() {
     type: Phaser.AUTO, width: W, height: H, parent: 'game', backgroundColor: '#10241a',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     input: { activePointers: 3 }, render: { antialias: true },
-    scene: [Boot, Title, Hub, Levels, Quests, Codex, Spin, Shop, Upgrades, Level]
+    scene: [Boot, Title, Hub, Levels, Quests, Codex, Spin, Village, About, Account, Shop, Upgrades, Level]
   });
 }
 var started = false;
