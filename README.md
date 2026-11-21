@@ -61,3 +61,12 @@ Google sign-in works on a normal web page. Inside the Android app Google may blo
 - Closing the game: the phone's back button (and the Esc key, and the new Exit button on the home screen) asks "Are you sure you want to close the game?" Yes closes, No keeps playing.
 - Permissions and reminders (Android): notifications (daily gift at 6 pm, village full after 8 hours, "the family misses you" after 2 days) and vibration. The game asks for notification permission once. Alerts can be turned off on the home screen.
 - New logo and app icon from the supplied artwork (`assets/logo.png`, `resources/icon*.png`).
+
+## v2.3
+- **Exit works**: "Yes, close" now calls the native App `exitApp` (falls back to `window.close()`).
+- **Soundtrack**: procedural looping music per world (menu + 10 themes), Music toggle in Hub and in levels.
+- **Low-life SFX**: heartbeat at 1 heart, alarm when a heart is lost, red pulsing screen border, music ducking.
+- **Permissions and notifications**: asked on first open; welcome notification, daily reminder, village-full and comeback alerts. Native detection hardened and Capacitor core bundled.
+- **Shop fixes**: aligned descriptions, clearer Equipped state, no overlapping buttons/icons.
+- **New UI style** matching the art assets (carved gold frames, plum panels, leafy green buttons, Poppins font).
+- Credits tab shows a diagnostics line (App / Voice / Alerts) to help debug phone issues.

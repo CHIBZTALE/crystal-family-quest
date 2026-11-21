@@ -15,6 +15,15 @@ body { font-family: Fredoka, "Trebuchet MS", sans-serif; color: var(--ink); }
 @media (orientation: portrait) { #rotate { display: block; } }
 """
 
+def font_css(embed):
+    path = os.path.join(HERE, 'fonts', 'Poppins-Bold.ttf')
+    if embed:
+        with open(path, 'rb') as f:
+            src = 'url(data:font/ttf;base64,%s)' % base64.b64encode(f.read()).decode()
+    else:
+        src = 'url(fonts/Poppins-Bold.ttf)'
+    return '@font-face { font-family: Poppins; font-weight: 700; font-style: normal; font-display: block; src: %s format("truetype"); }\n' % src
+
 def data_uri(path):
     ext = os.path.splitext(path)[1].lower()
     mime = 'image/jpeg' if ext in ('.jpg', '.jpeg') else 'image/png'
@@ -38,7 +47,7 @@ body = """<title>Crystal Family Quest</title>
 <script>
 %s
 </script>
-""" % (FONTS, CSS, PHASER, json.dumps(urls), game_js)
+""" % (FONTS, font_css(True) + CSS, PHASER, json.dumps(urls), game_js)
 os.makedirs(os.path.join(HERE, 'dist'), exist_ok=True)
 with open(os.path.join(HERE, 'dist', 'crystal-family-quest.html'), 'w', encoding='utf-8') as f:
     f.write(body)
@@ -65,7 +74,7 @@ dev = """<!doctype html>
 <script src="game.js"></script>
 </body>
 </html>
-""" % (FONTS, CSS, PHASER)
+""" % (FONTS, font_css(False) + CSS, PHASER)
 with open(os.path.join(HERE, 'index.html'), 'w', encoding='utf-8') as f:
     f.write(dev)
 

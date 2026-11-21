@@ -1,6 +1,6 @@
 {
   "name": "crystal-family-quest",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "description": "Crystal Family Quest, a family adventure game",
   "scripts": {
